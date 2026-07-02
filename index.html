@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NBRI Borehole Map - CEP3 - Rambukkana - Galagedara Section</title>
+
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
+
+<style>
+  :root{
+    --ink:#1c2b2a;
+    --paper:#f6f4ee;
+    --line:#d8d2c2;
+    --accent:#2f6f5e;
+    --accent-2:#b3541e;
+    --panel:#ffffff;
+    --muted:#6b6459;
+  }
+  *{box-sizing:border-box;}
+  html,body{height:100%;margin:0;}
+  body{
+    font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    display:flex;
+    flex-direction:column;
+  }
+  header{
+    background:var(--ink);
+    color:var(--paper);
+    padding:14px 20px;
+    display:flex;
+    align-items:baseline;
+    gap:14px;
+    flex-wrap:wrap;
+    border-bottom:3px solid var(--accent-2);
+  }
+  header h1{
+    font-size:17px;
+    margin:0;
+    letter-spacing:0.02em;
+    font-weight:600;
+  }
+  header .sub{
+    font-size:12px;
+    color:#c9c2b2;
+  }
+  #status-line{
+    margin-left:auto;
+    font-size:12px;
+    color:#c9c2b2;
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  #status-dot{
+    width:8px;height:8px;border-radius:50%;
+    background:#e0a840;
+  }
+  #status-dot.ok{background:#5fae7d;}
+  #status-dot.err{background:#c0523f;}
+
+  #app{
+    flex:1;
+    display:flex;
+    min-height:0;
+  }
+  #sidebar{
+    width:300px;
+    min-width:300px;
+    background:var(--panel);
+    border-right:1px solid var(--line);
+    display:flex;
+    flex-direction:column;
+    overflow-y:auto;
+  }
+  #sidebar .block{
+    padding:14px 16px;
+    border-bottom:1px solid var(--line);
+  }
+  #sidebar h2{
+    font-size:11px;
+    text-transform:uppercase;
+    letter-spacing:0.08em;
+    color:var(--muted);
+    margin:0 0 10px 0;
+  }
+  #search{
+    width:100%;
+    padding:8px 10px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:13px;
+    background:var(--paper);
+  }
+  .filter-group{margin-bottom:10px;}
+  .filter-group label{
+    display:block;
+    font-size:12.5px;
+    color:var(--ink);
+    margin-bottom:4px;
+  }
+  select{
+    width:100%;
+    padding:7px 8px;
+    border:1px solid var(--line);
+    border-radius:6px;
+    font-size:13px;
+    background:var(--paper);
+    color:var(--ink);
+  }
+  .legend-item{
+    display:flex;
+    align-items:center;
+    gap:8px;
+    font-size:12.5px;
+    margin-bottom:6px;
+  }
+  .swatch{
+    width:11px;height:11px;border-radius:50%;
+    flex-shrink:0;
+    border:1px solid rgba(0,0,0,0.2);
+  }
+  #count{
+    font-size:12.5px;
+    color:var(--muted);
+    margin-top:6px;
+  }
+  #config-note{
+    font-size:11.5px;
+    color:var(--muted);
+    line-height:1.5;
+  }
+  #config-note code{
+    background:var(--paper);
+    border:1px solid var(--line);
+    padding:1px 4px;
+    border-radius:4px;
+    font-size:11px;
+  }
+  #map{
+    flex:1;
+    min-height:0;
+  }
+  .leaflet-popup-content-wrapper{
+    border-radius:8px;
+  }
+  .popup-title{
+    font-weight:700;
+    font-size:14px;
+    margin-bottom:6px;
+    color:var(--ink);
+  }
+  .popup-table{
+    font-size:12px;
+    border-collapse:collapse;
+  }
+  .popup-table td{
+    padding:2px 8px 2px 0;
+    vertical-align:top;
+  }
+  .popup-table td.k{
+    color:var(--muted);
+    white-space:nowrap;
+  }
+  .status-pill{
+    display:inline-block;
+    padding:1px 8px;
+    border-radius:20px;
+    font-size:11px;
+    font-weight:600;
+    color:#fff;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>NBRI &mdash; Borehole Location Map</h1>
+  <div class="sub">NTNSP Transmission Tower Sites &middot; Central Sri Lanka</div>
+  <div id="status-line"><span id="status-dot"></span><span id="status-text">Loading data&hellip;</span></div>
+</header>
+
+<div id="app">
+  <div id="sidebar">
+    <div class="block">
+      <h2>Search</h2>
+      <input id="search" type="text" placeholder="Search BH name, lot, package&hellip;" />
+    </div>
+    <div class="block">
+      <h2>Filters</h2>
+      <div class="filter-group">
+        <label>Status</label>
+        <select id="f-status"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Contractor</label>
+        <select id="f-contractor"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Lot</label>
+        <select id="f-lot"><option value="">All</option></select>
+      </div>
+      <div class="filter-group">
+        <label>Package</label>
+        <select id="f-package"><option value="">All</option></select>
+      </div>
+      <div id="count">&nbsp;</div>
+    </div>
+    <div class="block">
+      <h2>Legend &mdash; Status</h2>
+      <div id="legend"></div>
+    </div>
+    <div class="block">
+      <h2>Data source</h2>
+      <div id="config-note">
+        Connected to the live NBRI Google Sheet (tab: CEP 3 Rambukkana-Galagedara).
+        The map re-fetches automatically on load and every 5 minutes while open.
+        To point it at a different tab or sheet, edit <code>SHEET_CSV_URL</code>
+        near the top of the script.
+      </div>
+    </div>
+  </div>
+  <div id="map"></div>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
+<script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
+
+<script>
+/* ============================================================
+   CONFIG — edit these two lines to point at your live sheet
+   ============================================================
+   1. In Google Sheets: File > Share > Publish to web
+      - Choose the specific sheet tab (not "Entire document")
+      - Format: Comma-separated values (.csv)
+      - Click Publish, copy the URL it gives you
+   2. Paste that URL below as SHEET_CSV_URL.
+      Leave it as null to keep using the built-in sample data.
+   ============================================================ */
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8PKkh7RDdd1g5boTWjdryadGLVhDkvKUMEjScApNAeWA7TrPrcetA1YiccjQvhPfnZ8ewg1NQugfv/pubhtml?gid=364501395&single=true";
+// If you ever get permission errors, use File > Share > Publish to web instead,
+// and paste that URL here (format: .../pub?gid=...&single=true&output=csv)
+
+// Refresh interval while the map stays open (ms). 5 min default.
+const AUTO_REFRESH_MS = 5 * 60 * 1000;
+
+// Coordinate system of your Easting/Northing columns.
+// SLD99 / Sri Lanka Grid 1999 (EPSG:5235) — matches your BH-MT / BH-VD dataset.
+proj4.defs("EPSG:5235", "+proj=tmerc +lat_0=7.000480277777778 +lon_0=80.77171308333334 +k=0.9999238418 +x_0=500000 +y_0=500000 +ellps=evrst30 +towgs84=-0.293,766.95,87.713,0.195704,1.69507,3.47302,-0.039338 +units=m +no_defs");
+
+/* ============================================================
+   SAMPLE DATA — replace by pointing SHEET_CSV_URL at your sheet
+   ============================================================ */
+const SAMPLE_CSV = `BH Name,Easting,Northing,Elevation,TF,Status,Contractor,Difficulty,Lot,Package,Status-N,Termination Depth,Rock Coring,Groundwater Level
+BH-MT-08,457534.196,539950.47,99.929,TRUE,Completed,NBRI,Paddy Field,Lot 0,Package 2A,2,15,12,2
+BH-MT-07,457571.239,539966.16,100.505,TRUE,Completed,NBRI,Paddy Field,Lot 0,Package 2A,2,15,9,1
+BH-MT-06,457611.528,539995.2,104.208,TRUE,Completed,NBRI,Paddy Field,Lot 0,Package 2A,2,13,4,4.5
+BH-MT-01,457679.474,539756.73,101.771,FALSE,Cancelled,NBRI,,Lot 0,Package 2A,1,,,
+BH-BR-14-1-01,457688.766,539832.21,97.853,TRUE,Completed,NBRI,Land - Moderate Difficulty,Lot 0,Package 2A,2,5.1,2.5,0.5
+BH-MT-09,457698.941,539725.33,95.893,TRUE,Completed,NBRI,Land - High Difficulty,Lot 0,Package 2A,2,6.1,2.5,1.2
+BH-MR-01-100-CL-0,457703.463,539822.506,,TRUE,Completed,NBRI,,Lot 0,Package 2A,2,5.6,2,0
+BH-MT-05,457706.131,539990.64,107.058,TRUE,Completed,NBRI,Land - Moderate Difficulty,Lot 0,Package 2A,2,15.5,2.5,5
+BH-BR-14-1-02,457712.155,539823.38,106.352,TRUE,Completed,NBRI,,Lot 0,Package 2A,2,13.5,1.5,-
+BH-CU-13+885-02,457729.002,539811.3,102.027,TRUE,Completed,GEO ENGINEERING,Land - Moderate Difficulty,Lot 0,Package 2A,2,19.8,10,3
+BH-CU-13+885-01,457732.681,539821.35,101.959,TRUE,Completed,GEO ENGINEERING,Land - Moderate Difficulty,Lot 0,Package 2A,2,18,10,0.2
+BH-MT-04,457735.411,539916.97,104.242,TRUE,Completed,NBRI,,Lot 0,Package 2A,2,17,5,4.2
+BH-MT-10,457787.508,539767.65,108.264,TRUE,Completed,GEO ENGINEERING,Land - Moderate Difficulty,Lot 0,Package 2A,2,27.3,9,5.8
+BH-MT-11,457837.218,539776.17,,TRUE,Completed,NBRI,Land - Moderate Difficulty,Lot 0,Package 2A,2,17.15,4,3.1
+BH-MT-12,457932.012,539740.388,99.611,TRUE,Completed,NBRI,Land - Moderate Difficulty,Lot 0,Package 2A,2,16.9,3,2.7
+BH-CU-14+139-01,457968.057,539732.5,99.155,TRUE,Completed,GEO ENGINEERING,Paddy Field,Lot 0,Package 2A,2,15.5,10,0.6
+BH-CU-14+139-02,457968.939,539720.73,99.138,TRUE,Completed,GEO ENGINEERING,Paddy Field,Lot 0,Package 2A,2,12.9,10,0.2
+BH14170L01,457998.503,539722.058,,TRUE,Completed,NBRI,,Lot 0,Package 2A,2,13.5,8,3.3
+BH14170R01,457993.965,539710.037,,TRUE,Completed,NBRI,,Lot 0,Package 2A,2,14,10,0.2
+BH-VD-15-1-R-01,458051.744,539689.47,,TRUE,Completed,NBRI,,Q1-Lot 01,Package 2A,2,12.5,11,2.7
+BH-VD-15-1-L-01,458055.523,539699.48,,TRUE,Completed,NBRI,,Q1-Lot 01,Package 2A,2,12.5,8,2.15
+BH-VD-15-1-R-02,458079.811,539678.87,,TRUE,Completed,NBRI,,Q1-Lot 01,Package 2A,2,13.3,11,0
+BH-VD-15-1-L-02,458083.59,539688.88,,TRUE,Completed,NBRI,,Q1-Lot 01,Package 2A,2,12,10,0.1
+BH-VD-15-1-R-03,458107.878,539668.28,90.351,TRUE,Completed,GEO ENGINEERING,Paddy Field,Q1-Lot 01,Package 2A,2,13.2,3.2,0
+BH-VD-15-1-L-03,458111.656,539678.29,90.338,TRUE,Completed,GEO ENGINEERING,Paddy Field,Q1-Lot 01,Package 2A,2,33.8,30.5,0
+BH-VD-15-1-L-04,458130.368,539671.22,90.147,TRUE,Completed,GEO ENGINEERING,Paddy Field,Q1-Lot 01,Package 2A,2,12.3,10,0
+BH-VD-15-1-R-04,458135.944,539657.68,89.925,TRUE,Completed,GEO ENGINEERING,Paddy Field,Q1-Lot 01,Package 2A,2,6.9,4,0
+BH-VD-15-1-L-05,458149.079,539664.16,89.829,TRUE,Completed,GEO ENGINEERING,Paddy Field,Q1-Lot 01,Package 2A,2,9.6,7,0
+BH-VD-15-1-R-05,458159.333,539648.85,92.601,TRUE,Completed,GEO ENGINEERING,Land - Moderate Difficulty,Q1-Lot 01,Package 2A,2,15.3,10,2.7
+BH-VD-15-1-L-06,458181.823,539651.8,92.351,TRUE,Completed,GEO ENGINEERING,Land - Moderate Difficulty,Q1-Lot 01,Package 2A,2,16.1,6.1,4.6
+BH-VD-15-1-R-06,458192.078,539636.49,90.008,TRUE,Completed,GEO ENGINEERING,Land - Moderate Difficulty,Q1-Lot 01,Package 2A,2,12.4,10,0.2
+BH-VD-15-1-L-07,458205.212,539642.97,89.546,TRUE,Completed,GEO ENGINEERING,Paddy Field,Q1-Lot 01,Package 2A,2,14,10,0
+`;
+
+/* ============================================================
+   Status colors
+   ============================================================ */
+const STATUS_COLORS = {
+  "Completed": "#2f6f5e",
+  "Cancelled": "#c0523f",
+  "Ongoing": "#b3541e",
+  "In Progress": "#b3541e",
+  "Planned": "#8a8370",
+  "Pending": "#c9a227",
+  "default": "#4c6a72"
+};
+
+const map = L.map('map', { zoomControl: true }).setView([7.45, 80.6], 12);
+L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+  maxZoom: 19,
+  attribution: '&copy; OpenStreetMap contributors'
+}).addTo(map);
+
+const clusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
+map.addLayer(clusterGroup);
+
+let allRows = [];
+let markers = [];
+
+function setStatus(text, cls){
+  document.getElementById('status-text').textContent = text;
+  const dot = document.getElementById('status-dot');
+  dot.className = '';
+  if (cls) dot.classList.add(cls);
+}
+
+function toNum(v){
+  if (v === undefined || v === null) return null;
+  const s = String(v).trim();
+  if (s === '' || s === '-') return null;
+  const n = parseFloat(s);
+  return isNaN(n) ? null : n;
+}
+
+function convertToLatLon(easting, northing){
+  try {
+    const [lon, lat] = proj4('EPSG:5235', 'WGS84', [easting, northing]);
+    return { lat, lon };
+  } catch(e){
+    return null;
+  }
+}
+
+function colorFor(status){
+  return STATUS_COLORS[status] || STATUS_COLORS.default;
+}
+
+function makeIcon(status){
+  const color = colorFor(status);
+  return L.divIcon({
+    className: '',
+    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,0.5);"></div>`,
+    iconSize: [16,16],
+    iconAnchor: [8,8],
+    popupAnchor: [0,-8]
+  });
+}
+
+function popupHtml(row){
+  const status = row['Status'] || '';
+  const rows = [
+    ['Easting', row['Easting']],
+    ['Northing', row['Northing']],
+    ['Elevation (m)', row['Elevation']],
+    ['Contractor', row['Contractor Done'] || row['Contractor']],
+    ['Difficulty', row['Difficulty']],
+    ['Lot', row['Lot']],
+    ['Package', row['Package']],
+    ['Termination Depth (m)', row['Termination Depth']],
+    ['Rock Coring (m)', row['Rock Coring']],
+    ['Groundwater Level (m)', row['Groundwater Level']],
+  ].filter(([k,v]) => v !== undefined && v !== null && String(v).trim() !== '');
+
+  const tableRows = rows.map(([k,v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('');
+  return `
+    <div class="popup-title">${row['BH Name'] || 'Unnamed BH'}</div>
+    <span class="status-pill" style="background:${colorFor(status)}">${status || 'Unknown'}</span>
+    <table class="popup-table" style="margin-top:8px;">${tableRows}</table>
+  `;
+}
+
+function populateSelect(id, values){
+  const el = document.getElementById(id);
+  const current = el.value;
+  el.innerHTML = '<option value="">All</option>' + values.map(v => `<option value="${v}">${v}</option>`).join('');
+  if (values.includes(current)) el.value = current;
+}
+
+function buildLegend(statuses){
+  const el = document.getElementById('legend');
+  el.innerHTML = statuses.map(s => `
+    <div class="legend-item">
+      <span class="swatch" style="background:${colorFor(s)}"></span>
+      <span>${s}</span>
+    </div>`).join('');
+}
+
+function render(){
+  const searchTerm = document.getElementById('search').value.trim().toLowerCase();
+  const fStatus = document.getElementById('f-status').value;
+  const fContractor = document.getElementById('f-contractor').value;
+  const fLot = document.getElementById('f-lot').value;
+  const fPackage = document.getElementById('f-package').value;
+
+  clusterGroup.clearLayers();
+  markers = [];
+
+  let shown = 0;
+  const bounds = [];
+
+  allRows.forEach(row => {
+    const status = row['Status'] || '';
+    const contractor = row['Contractor Done'] || row['Contractor'] || '';
+    const lot = row['Lot'] || '';
+    const pkg = row['Package'] || '';
+    const name = row['BH Name'] || '';
+
+    if (fStatus && status !== fStatus) return;
+    if (fContractor && contractor !== fContractor) return;
+    if (fLot && lot !== fLot) return;
+    if (fPackage && pkg !== fPackage) return;
+    if (searchTerm){
+      const hay = `${name} ${lot} ${pkg} ${contractor}`.toLowerCase();
+      if (!hay.includes(searchTerm)) return;
+    }
+
+    const e = toNum(row['Easting']);
+    const n = toNum(row['Northing']);
+    if (e === null || n === null) return;
+
+    const ll = convertToLatLon(e, n);
+    if (!ll) return;
+
+    const marker = L.marker([ll.lat, ll.lon], { icon: makeIcon(status) });
+    marker.bindPopup(popupHtml(row));
+    clusterGroup.addLayer(marker);
+    bounds.push([ll.lat, ll.lon]);
+    shown++;
+  });
+
+  document.getElementById('count').textContent = `${shown} of ${allRows.length} boreholes shown`;
+
+  if (bounds.length){
+    map.fitBounds(bounds, { padding: [40,40], maxZoom: 16 });
+  }
+}
+
+function uniqueVals(rows, key){
+  return [...new Set(rows.map(r => (r[key] || '').trim()).filter(v => v))].sort();
+}
+
+function loadRows(rows){
+  allRows = rows.filter(r => r['BH Name'] && r['BH Name'].trim());
+  populateSelect('f-status', uniqueVals(allRows, 'Status'));
+  populateSelect('f-contractor', uniqueVals(allRows, 'Contractor Done').length ? uniqueVals(allRows,'Contractor Done') : uniqueVals(allRows,'Contractor'));
+  populateSelect('f-lot', uniqueVals(allRows, 'Lot'));
+  populateSelect('f-package', uniqueVals(allRows, 'Package'));
+  buildLegend(uniqueVals(allRows, 'Status'));
+  render();
+}
+
+function fetchData(){
+  if (SHEET_CSV_URL){
+    setStatus('Refreshing from Google Sheet…');
+    Papa.parse(SHEET_CSV_URL, {
+      download: true,
+      header: true,
+      skipEmptyLines: true,
+      complete: (results) => {
+        loadRows(results.data);
+        setStatus('Live — synced ' + new Date().toLocaleTimeString(), 'ok');
+      },
+      error: (err) => {
+        console.error(err);
+        setStatus('Could not reach sheet — showing sample data', 'err');
+        Papa.parse(SAMPLE_CSV, { header:true, skipEmptyLines:true, complete: r => loadRows(r.data) });
+      }
+    });
+  } else {
+    Papa.parse(SAMPLE_CSV, { header:true, skipEmptyLines:true, complete: r => loadRows(r.data) });
+    setStatus('Sample data (not connected to a live sheet)');
+  }
+}
+
+document.getElementById('search').addEventListener('input', render);
+['f-status','f-contractor','f-lot','f-package'].forEach(id =>
+  document.getElementById(id).addEventListener('change', render)
+);
+
+fetchData();
+if (SHEET_CSV_URL && AUTO_REFRESH_MS > 0){
+  setInterval(fetchData, AUTO_REFRESH_MS);
+}
+</script>
+</body>
+</html>
