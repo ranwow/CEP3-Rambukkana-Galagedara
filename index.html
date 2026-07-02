@@ -473,14 +473,28 @@ function colorFor(status){
   return STATUS_COLORS[status] || STATUS_COLORS.default;
 }
 
-function makeIcon(status){
+function makeIcon(status) {
   const color = colorFor(status);
+  
+  // Set lower opacity for cancelled points so they sit quietly in the background
+  const opacity = (status === "Cancelled") ? "0.5" : "1.0";
+  
   return L.divIcon({
     className: '',
-    html: `<div style="width:16px;height:16px;border-radius:50%;background:${color};border:2px solid #fff;box-shadow:0 0 3px rgba(0,0,0,0.5);"></div>`,
-    iconSize: [16,16],
-    iconAnchor: [8,8],
-    popupAnchor: [0,-8]
+    html: `
+      <div style="
+        width: 14px; 
+        height: 14px; 
+        border-radius: 50%; 
+        background: ${color}; 
+        border: 2px solid #ffffff; 
+        box-shadow: 0 0 0 2px ${color}, 0 2px 5px rgba(0,0,0,0.4);
+        opacity: ${opacity};
+        transition: transform 0.15s ease-in-out;
+      "></div>`,
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -9]
   });
 }
 
