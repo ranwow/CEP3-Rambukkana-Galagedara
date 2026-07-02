@@ -696,7 +696,7 @@ function loadOverlayFile(file){
   } else {
     alert('Unsupported file type: .' + ext + '. Use KML, GeoJSON, or a zipped Shapefile.');
   }
-}
+} 
 
 document.getElementById('overlay-file').addEventListener('change', (e) => {
   Array.from(e.target.files).forEach(loadOverlayFile);
