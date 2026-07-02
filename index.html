@@ -262,23 +262,29 @@
   .leaflet-control-layers-base span{
     color:var(--ink);
   }
-  .bh-label{
-    display:none;
-    background:rgba(255,255,255,0.92) !important;
-    border:1px solid var(--line) !important;
-    color:var(--ink) !important;
-    font-size:10.5px !important;
-    font-weight:600;
-    padding:1px 5px !important;
-    border-radius:4px !important;
-    box-shadow:0 1px 3px rgba(0,0,0,0.2) !important;
+  /* Base rules for our smart engineering labels */
+  .bh-label, .pkg-label {
+    background: rgba(255, 255, 255, 0.92) !important;
+    border: 1px solid var(--line) !important;
+    color: var(--ink) !important;
+    font-size: 10.5px !important;
+    font-weight: 600;
+    padding: 1px 5px !important;
+    border-radius: 4px !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2) !important;
   }
-  .bh-label::before{
-    border-top-color:var(--line) !important;
+  .bh-label::before, .pkg-label::before {
+    border-top-color: var(--line) !important;
   }
-  #map.show-labels .bh-label{
-    display:block;
-  }
+
+  /* Default state: hide labels entirely */
+  #map .bh-label, #map .pkg-label { display: none; }
+
+  /* Mid-stage zoom (12 to 17): Show only Package labels */
+  #map.show-pkg-labels .pkg-label { display: block; }
+
+  /* Deep-stage zoom (18+): Show individual Borehole IDs instead */
+  #map.show-bh-labels .bh-label { display: block; }
 </style>
 </head>
 <body>
@@ -422,11 +428,17 @@ map.addLayer(markersLayer);
 
 // Below this zoom level, BH-ID labels are hidden to avoid overlap.
 // Raise this number if labels still look crowded at your zoom levels.
-const LABEL_MIN_ZOOM = 19;
+const LABEL_MIN_ZOOM = 18; // When individual Borehole IDs take over
 
 function updateLabelVisibility(){
-  const show = map.getZoom() >= LABEL_MIN_ZOOM;
-  document.getElementById('map').classList.toggle('show-labels', show);
+  const zoom = map.getZoom();
+  const mapDiv = document.getElementById('map');
+  
+  // Package labels display cleanly between zoom 12 and 17
+  mapDiv.classList.toggle('show-pkg-labels', zoom >= 12 && zoom < LABEL_MIN_ZOOM);
+  
+  // Borehole labels unlock at deep zoom levels (18+)
+  mapDiv.classList.toggle('show-bh-labels', zoom >= LABEL_MIN_ZOOM);
 }
 map.on('zoomend', updateLabelVisibility);
 
@@ -534,6 +546,7 @@ function render(){
 
   let shown = 0;
   const bounds = [];
+  const labeledPackages = new Set(); // Tracks unique packages to prevent overlap text
 
   allRows.forEach(row => {
     const status = row['Status'] || '';
@@ -560,12 +573,26 @@ function render(){
 
     const marker = L.marker([ll.lat, ll.lon], { icon: makeIcon(status) });
     marker.bindPopup(popupHtml(row));
-    marker.bindTooltip(name, {
-      permanent: true,
-      direction: 'top',
-      offset: [0, -9],
-      className: 'bh-label'
-    });
+    
+    // SMART DUAL-TOOLTIP INJECTION
+    const cleanPkgName = pkg.trim();
+    if (cleanPkgName && !labeledPackages.has(cleanPkgName)) {
+      marker.bindTooltip(`📦 ${cleanPkgName}`, {
+        permanent: true,
+        direction: 'top',
+        offset: [0, -9],
+        className: 'pkg-label'
+      });
+      labeledPackages.add(cleanPkgName); // Register package so other markers in this sector stay quiet
+    } else {
+      marker.bindTooltip(name, {
+        permanent: true,
+        direction: 'top',
+        offset: [0, -9],
+        className: 'bh-label'
+      });
+    }
+
     markersLayer.addLayer(marker);
     bounds.push([ll.lat, ll.lon]);
     shown++;
@@ -573,11 +600,14 @@ function render(){
 
   document.getElementById('count').textContent = `${shown} of ${allRows.length} boreholes shown`;
 
-  if (bounds.length){
+  // Fix the fitBounds routine to run only once so it doesn't snap zoom scales on auto-refresh
+  if (bounds.length && !window.hasInitialZoomed){
     map.fitBounds(bounds, { padding: [40,40], maxZoom: 16 });
+    window.hasInitialZoomed = true;
   }
 
   updateLabelVisibility();
+}
 }
 
 function uniqueVals(rows, key){
