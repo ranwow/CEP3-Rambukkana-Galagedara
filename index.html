@@ -665,4 +665,67 @@ function loadOverlayFile(file){
         const dom = new DOMParser().parseFromString(reader.result, 'text/xml');
         addOverlayLayer(file.name, toGeoJSON.kml(dom));
       } catch (err) {
-        alert('Could  
+        alert('Could not parse "' + file.name + '" as KML: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+
+  } else if (ext === 'geojson' || ext === 'json'){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        addOverlayLayer(file.name, JSON.parse(reader.result));
+      } catch (err) {
+        alert('Could not parse "' + file.name + '" as GeoJSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+
+  } else if (ext === 'zip'){
+    const reader = new FileReader();
+    reader.onload = () => {
+      shp(reader.result)
+        .then(geojson => addOverlayLayer(file.name, geojson))
+        .catch(err => alert('Could not parse shapefile "' + file.name + '": ' + err.message));
+    };
+    reader.readAsArrayBuffer(file);
+
+  } else if (ext === 'dwg' || ext === 'dxf'){
+    alert('"' + file.name + '" is a ' + ext.toUpperCase() + ' file, which browsers can\'t read directly.\n\nConvert it to KML, GeoJSON, or a zipped Shapefile first (e.g. via QGIS — free — or an export/save-as in AutoCAD Map 3D / Civil 3D), then upload the converted file here.');
+
+  } else {
+    alert('Unsupported file type: .' + ext + '. Use KML, GeoJSON, or a zipped Shapefile.');
+  }
+}
+
+document.getElementById('overlay-file').addEventListener('change', (e) => {
+  Array.from(e.target.files).forEach(loadOverlayFile);
+  e.target.value = '';
+});
+
+/* ============================================================
+   Sidebar toggle (mobile drawer / desktop collapse)
+   ============================================================ */
+const appEl = document.getElementById('app');
+const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+function toggleSidebar(){
+  if (isMobile()){
+    appEl.classList.toggle('sidebar-open-mobile');
+  } else {
+    appEl.classList.toggle('sidebar-collapsed-desktop');
+  }
+  setTimeout(() => map.invalidateSize(), 260);
+}
+document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
+document.getElementById('sidebar-backdrop').addEventListener('click', () => {
+  appEl.classList.remove('sidebar-open-mobile');
+});
+
+// Start collapsed on phones so the map is visible immediately.
+if (isMobile()){
+  appEl.classList.remove('sidebar-open-mobile');
+}
+</script>
+</body>
+</html>
