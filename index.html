@@ -422,7 +422,7 @@ map.addLayer(markersLayer);
 
 // Below this zoom level, BH-ID labels are hidden to avoid overlap.
 // Raise this number if labels still look crowded at your zoom levels.
-const LABEL_MIN_ZOOM = 16;
+const LABEL_MIN_ZOOM = 19;
 
 function updateLabelVisibility(){
   const show = map.getZoom() >= LABEL_MIN_ZOOM;
