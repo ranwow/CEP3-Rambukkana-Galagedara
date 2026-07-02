@@ -36,6 +36,22 @@
     flex-wrap:wrap;
     border-bottom:3px solid var(--accent-2);
   }
+  #sidebar-toggle{
+    background:transparent;
+    border:1px solid #4a5a58;
+    color:var(--paper);
+    border-radius:6px;
+    width:32px;
+    height:32px;
+    font-size:16px;
+    line-height:1;
+    cursor:pointer;
+    flex-shrink:0;
+    align-self:center;
+  }
+  #sidebar-toggle:hover{
+    background:rgba(255,255,255,0.08);
+  }
   header h1{
     font-size:17px;
     margin:0;
@@ -65,6 +81,7 @@
     flex:1;
     display:flex;
     min-height:0;
+    position:relative;
   }
   #sidebar{
     width:300px;
@@ -74,6 +91,48 @@
     display:flex;
     flex-direction:column;
     overflow-y:auto;
+    transition:width 0.22s ease, min-width 0.22s ease, padding 0.22s ease;
+  }
+  #app.sidebar-collapsed-desktop #sidebar{
+    width:0;
+    min-width:0;
+    border-right:none;
+    overflow:hidden;
+  }
+  #sidebar-backdrop{
+    display:none;
+  }
+  @media (max-width: 768px){
+    header h1{ font-size:15px; }
+    header .sub{ display:none; }
+    #status-line{ font-size:11px; }
+    #sidebar{
+      position:fixed;
+      top:0;
+      left:0;
+      height:100%;
+      width:82vw;
+      max-width:320px;
+      min-width:0;
+      z-index:1001;
+      box-shadow:2px 0 12px rgba(0,0,0,0.3);
+      transform:translateX(-100%);
+      transition:transform 0.25s ease;
+    }
+    #app.sidebar-open-mobile #sidebar{
+      transform:translateX(0);
+    }
+    #app.sidebar-open-mobile #sidebar-backdrop{
+      display:block;
+      position:fixed;
+      inset:0;
+      background:rgba(0,0,0,0.4);
+      z-index:1000;
+    }
+    .leaflet-control-layers-expanded{
+      max-width:150px;
+      font-size:11.5px !important;
+    }
   }
   #sidebar .block{
     padding:14px 16px;
@@ -117,6 +176,11 @@
     font-size:12.5px;
     margin-bottom:6px;
   }
+  .legend-item .legend-count{
+    margin-left:auto;
+    color:var(--muted);
+    font-variant-numeric:tabular-nums;
+  }
   .swatch{
     width:11px;height:11px;border-radius:50%;
     flex-shrink:0;
@@ -142,6 +206,11 @@
   #map{
     flex:1;
     min-height:0;
+  }
+  #overlay-file{
+    width:100%;
+    font-size:12px;
+    color:var(--muted);
   }
   .leaflet-popup-content-wrapper{
     border-radius:8px;
@@ -215,11 +284,13 @@
 <body>
 
 <header>
+  <button id="sidebar-toggle" aria-label="Toggle panel">&#9776;</button>
   <h1>NBRI &mdash; Borehole Location Map</h1>
-  <div class="sub">CEP3 - Rambukkana - Galagedara Section &middot; Central Sri Lanka</div>
+  <div class="sub">NTNSP Transmission Tower Sites &middot; Central Sri Lanka</div>
   <div id="status-line"><span id="status-dot"></span><span id="status-text">Loading data&hellip;</span></div>
 </header>
 
+<div id="sidebar-backdrop"></div>
 <div id="app">
   <div id="sidebar">
     <div class="block">
@@ -251,6 +322,16 @@
       <div id="legend"></div>
     </div>
     <div class="block">
+      <h2>Overlay Layers</h2>
+      <input id="overlay-file" type="file" accept=".kml,.geojson,.json,.zip" multiple />
+      <div id="config-note" style="margin-top:8px;">
+        Add KML, GeoJSON, or a zipped Shapefile (.zip containing .shp/.dbf/.shx/.prj)
+        &mdash; e.g. tower line alignment or land boundaries. Toggle each on/off
+        from the layer switcher on the map. DWG/DXF isn't supported by browsers;
+        convert to one of the above first (e.g. via QGIS or AutoCAD export).
+      </div>
+    </div>
+    <div class="block">
       <h2>Data source</h2>
       <div id="config-note">
         Connected to the live NBRI Google Sheet (tab: CEP 3 Rambukkana-Galagedara).
@@ -266,6 +347,8 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
+<script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
+<script src="https://unpkg.com/shpjs@4.0.4/dist/shp.js"></script>
 
 <script>
 /* ============================================================
@@ -329,7 +412,10 @@ const baseLayers = {
 };
 
 baseLayers["Street"].addTo(map);
-L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
+const layersControl = L.control.layers(baseLayers, {}, {
+  position: 'topright',
+  collapsed: window.matchMedia('(max-width: 768px)').matches
+}).addTo(map);
 
 const markersLayer = L.layerGroup();
 map.addLayer(markersLayer);
@@ -416,13 +502,24 @@ function populateSelect(id, values){
   if (values.includes(current)) el.value = current;
 }
 
-function buildLegend(statuses){
+function buildLegend(rows){
+  const counts = {};
+  rows.forEach(r => {
+    const s = (r['Status'] || 'Unknown').trim() || 'Unknown';
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const statuses = Object.keys(counts).sort();
   const el = document.getElementById('legend');
   el.innerHTML = statuses.map(s => `
     <div class="legend-item">
       <span class="swatch" style="background:${colorFor(s)}"></span>
       <span>${s}</span>
-    </div>`).join('');
+      <span class="legend-count">${counts[s]}</span>
+    </div>`).join('') + `
+    <div class="legend-item" style="border-top:1px solid var(--line); padding-top:6px; margin-top:2px; font-weight:600;">
+      <span>Total</span>
+      <span class="legend-count">${rows.length}</span>
+    </div>`;
 }
 
 function render(){
@@ -493,7 +590,7 @@ function loadRows(rows){
   populateSelect('f-contractor', uniqueVals(allRows, 'Contractor Done').length ? uniqueVals(allRows,'Contractor Done') : uniqueVals(allRows,'Contractor'));
   populateSelect('f-lot', uniqueVals(allRows, 'Lot'));
   populateSelect('f-package', uniqueVals(allRows, 'Package'));
-  buildLegend(uniqueVals(allRows, 'Status'));
+  buildLegend(allRows);
   render();
 }
 
@@ -528,6 +625,106 @@ document.getElementById('search').addEventListener('input', render);
 fetchData();
 if (SHEET_CSV_URL && AUTO_REFRESH_MS > 0){
   setInterval(fetchData, AUTO_REFRESH_MS);
+}
+
+/* ============================================================
+   Overlay layers — KML, GeoJSON, zipped Shapefile
+   ============================================================ */
+let overlayCount = 0;
+
+function addOverlayLayer(name, geojson){
+  let layer;
+  try {
+    layer = L.geoJSON(geojson, {
+      style: { color: '#2b6cb0', weight: 3, fillColor: '#4299e1', fillOpacity: 0.2 },
+      pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+        radius: 5, color: '#2b6cb0', weight: 1.5, fillColor: '#4299e1', fillOpacity: 0.85
+      })
+    });
+  } catch (err) {
+    alert('Could not draw "' + name + '": ' + err.message);
+    return;
+  }
+  overlayCount++;
+  const label = overlayCount + '. ' + name;
+  layer.addTo(map);
+  layersControl.addOverlay(layer, label);
+  try {
+    const b = layer.getBounds();
+    if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+  } catch (e) { /* no valid bounds, ignore */ }
+}
+
+function loadOverlayFile(file){
+  const ext = file.name.split('.').pop().toLowerCase();
+
+  if (ext === 'kml'){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        const dom = new DOMParser().parseFromString(reader.result, 'text/xml');
+        addOverlayLayer(file.name, toGeoJSON.kml(dom));
+      } catch (err) {
+        alert('Could not parse "' + file.name + '" as KML: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+
+  } else if (ext === 'geojson' || ext === 'json'){
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        addOverlayLayer(file.name, JSON.parse(reader.result));
+      } catch (err) {
+        alert('Could not parse "' + file.name + '" as GeoJSON: ' + err.message);
+      }
+    };
+    reader.readAsText(file);
+
+  } else if (ext === 'zip'){
+    const reader = new FileReader();
+    reader.onload = () => {
+      shp(reader.result)
+        .then(geojson => addOverlayLayer(file.name, geojson))
+        .catch(err => alert('Could not parse shapefile "' + file.name + '": ' + err.message));
+    };
+    reader.readAsArrayBuffer(file);
+
+  } else if (ext === 'dwg' || ext === 'dxf'){
+    alert('"' + file.name + '" is a ' + ext.toUpperCase() + ' file, which browsers can\'t read directly.\n\nConvert it to KML, GeoJSON, or a zipped Shapefile first (e.g. via QGIS — free — or an export/save-as in AutoCAD Map 3D / Civil 3D), then upload the converted file here.');
+
+  } else {
+    alert('Unsupported file type: .' + ext + '. Use KML, GeoJSON, or a zipped Shapefile.');
+  }
+}
+
+document.getElementById('overlay-file').addEventListener('change', (e) => {
+  Array.from(e.target.files).forEach(loadOverlayFile);
+  e.target.value = '';
+});
+
+/* ============================================================
+   Sidebar toggle (mobile drawer / desktop collapse)
+   ============================================================ */
+const appEl = document.getElementById('app');
+const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+function toggleSidebar(){
+  if (isMobile()){
+    appEl.classList.toggle('sidebar-open-mobile');
+  } else {
+    appEl.classList.toggle('sidebar-collapsed-desktop');
+  }
+  setTimeout(() => map.invalidateSize(), 260);
+}
+document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
+document.getElementById('sidebar-backdrop').addEventListener('click', () => {
+  appEl.classList.remove('sidebar-open-mobile');
+});
+
+// Start collapsed on phones so the map is visible immediately.
+if (isMobile()){
+  appEl.classList.remove('sidebar-open-mobile');
 }
 </script>
 </body>
