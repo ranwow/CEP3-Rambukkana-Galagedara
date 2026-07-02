@@ -608,7 +608,7 @@ function render(){
 
   updateLabelVisibility();
 }
-}
+
 
 function uniqueVals(rows, key){
   return [...new Set(rows.map(r => (r[key] || '').trim()).filter(v => v))].sort();
