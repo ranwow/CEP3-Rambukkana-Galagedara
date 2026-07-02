@@ -6,8 +6,6 @@
 <title>NBRI Borehole Map - CEP3 - Rambukkana - Galagedara Section</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
-<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 
 <style>
   :root{
@@ -174,6 +172,44 @@
     font-weight:600;
     color:#fff;
   }
+  .leaflet-control-layers{
+    border-radius:8px !important;
+    border:1px solid var(--line) !important;
+    box-shadow:0 2px 6px rgba(0,0,0,0.15) !important;
+    font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;
+  }
+  .leaflet-control-layers-expanded{
+    padding:10px 12px !important;
+    background:var(--panel) !important;
+    color:var(--ink) !important;
+  }
+  .leaflet-control-layers-base label{
+    font-size:12.5px;
+    margin-bottom:4px;
+    display:flex;
+    align-items:center;
+    gap:6px;
+  }
+  .leaflet-control-layers-base span{
+    color:var(--ink);
+  }
+  .bh-label{
+    display:none;
+    background:rgba(255,255,255,0.92) !important;
+    border:1px solid var(--line) !important;
+    color:var(--ink) !important;
+    font-size:10.5px !important;
+    font-weight:600;
+    padding:1px 5px !important;
+    border-radius:4px !important;
+    box-shadow:0 1px 3px rgba(0,0,0,0.2) !important;
+  }
+  .bh-label::before{
+    border-top-color:var(--line) !important;
+  }
+  #map.show-labels .bh-label{
+    display:block;
+  }
 </style>
 </head>
 <body>
@@ -228,7 +264,6 @@
 </div>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-<script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
 <script src="https://unpkg.com/papaparse@5.4.1/papaparse.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
 
@@ -267,13 +302,47 @@ const STATUS_COLORS = {
 };
 
 const map = L.map('map', { zoomControl: true }).setView([7.45, 80.6], 12);
-L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-  maxZoom: 19,
-  attribution: '&copy; OpenStreetMap contributors'
-}).addTo(map);
 
-const clusterGroup = L.markerClusterGroup({ maxClusterRadius: 50 });
-map.addLayer(clusterGroup);
+const baseLayers = {
+  "Street": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }),
+  "Satellite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
+  }),
+  "Hybrid": L.layerGroup([
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Labels &copy; Esri'
+    })
+  ]),
+  "Terrain": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM &mdash; Style: &copy; OpenTopoMap (CC-BY-SA)'
+  })
+};
+
+baseLayers["Street"].addTo(map);
+L.control.layers(baseLayers, null, { position: 'topright', collapsed: false }).addTo(map);
+
+const markersLayer = L.layerGroup();
+map.addLayer(markersLayer);
+
+// Below this zoom level, BH-ID labels are hidden to avoid overlap.
+// Raise this number if labels still look crowded at your zoom levels.
+const LABEL_MIN_ZOOM = 16;
+
+function updateLabelVisibility(){
+  const show = map.getZoom() >= LABEL_MIN_ZOOM;
+  document.getElementById('map').classList.toggle('show-labels', show);
+}
+map.on('zoomend', updateLabelVisibility);
 
 let allRows = [];
 let markers = [];
@@ -363,7 +432,7 @@ function render(){
   const fLot = document.getElementById('f-lot').value;
   const fPackage = document.getElementById('f-package').value;
 
-  clusterGroup.clearLayers();
+  markersLayer.clearLayers();
   markers = [];
 
   let shown = 0;
@@ -394,7 +463,13 @@ function render(){
 
     const marker = L.marker([ll.lat, ll.lon], { icon: makeIcon(status) });
     marker.bindPopup(popupHtml(row));
-    clusterGroup.addLayer(marker);
+    marker.bindTooltip(name, {
+      permanent: true,
+      direction: 'top',
+      offset: [0, -9],
+      className: 'bh-label'
+    });
+    markersLayer.addLayer(marker);
     bounds.push([ll.lat, ll.lon]);
     shown++;
   });
@@ -404,6 +479,8 @@ function render(){
   if (bounds.length){
     map.fitBounds(bounds, { padding: [40,40], maxZoom: 16 });
   }
+
+  updateLabelVisibility();
 }
 
 function uniqueVals(rows, key){
