@@ -191,6 +191,18 @@
     color:var(--muted);
     margin-top:6px;
   }
+  #config-note{
+    font-size:11.5px;
+    color:var(--muted);
+    line-height:1.5;
+  }
+  #config-note code{
+    background:var(--paper);
+    border:1px solid var(--line);
+    padding:1px 4px;
+    border-radius:4px;
+    font-size:11px;
+  }
   #map{
     flex:1;
     min-height:0;
@@ -203,30 +215,23 @@
   .leaflet-popup-content-wrapper{
     border-radius:8px;
   }
-  .leaflet-popup-content {
-    width: 280px !important;
-    margin: 13px 19px !important;
-  }
   .popup-title{
     font-weight:700;
     font-size:14px;
-    margin-bottom:4px;
+    margin-bottom:6px;
     color:var(--ink);
   }
   .popup-table{
-    width:100%;
-    font-size:11.5px;
+    font-size:12px;
     border-collapse:collapse;
-    margin-bottom:10px;
   }
   .popup-table td{
-    padding:2px 4px 2px 0;
+    padding:2px 8px 2px 0;
     vertical-align:top;
   }
   .popup-table td.k{
     color:var(--muted);
     white-space:nowrap;
-    width:55%;
   }
   .status-pill{
     display:inline-block;
@@ -235,44 +240,21 @@
     font-size:11px;
     font-weight:600;
     color:#fff;
-    margin-bottom:8px;
   }
   .pdf-link-btn{
     display:block;
-    margin-top:8px;
+    margin-top:10px;
     padding:6px 10px;
     background:var(--accent);
     color:#fff !important;
     text-decoration:none;
     border-radius:6px;
-    font-size:11.5px;
+    font-size:12px;
     font-weight:600;
     text-align:center;
   }
   .pdf-link-btn:hover{
     background:#255a4c;
-  }
-  .log-container {
-    background: #fdfdfb;
-    border: 1px solid var(--line);
-    border-radius: 6px;
-    padding: 8px;
-    margin-top: 8px;
-    text-align: center;
-  }
-  .log-title {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    color: var(--muted);
-    margin-bottom: 6px;
-    letter-spacing: 0.03em;
-  }
-  .bh-canvas {
-    background: #fff;
-    border: 1px dashed #ccc;
-    display: block;
-    margin: 0 auto;
   }
   .leaflet-control-layers{
     border-radius:8px !important;
@@ -295,6 +277,7 @@
   .leaflet-control-layers-base span{
     color:var(--ink);
   }
+  /* Base rules for our smart engineering labels */
   .bh-label, .pkg-label {
     background: rgba(255, 255, 255, 0.92) !important;
     border: 1px solid var(--line) !important;
@@ -309,8 +292,13 @@
     border-top-color: var(--line) !important;
   }
 
+  /* Default state: hide labels entirely */
   #map .bh-label, #map .pkg-label { display: none; }
+
+  /* Mid-stage zoom (12 to 17): Show only Package labels */
   #map.show-pkg-labels .pkg-label { display: block; }
+
+  /* Deep-stage zoom (18+): Show individual Borehole IDs instead */
   #map.show-bh-labels .bh-label { display: block; }
 </style>
 </head>
@@ -356,7 +344,24 @@
     </div>
     <div class="block">
       <h2>Overlay Layers</h2>
-      <input id="overlay-file" type="file" accept=".kml,.geojson,.json,.zip,.pdf" multiple />
+      <input id="overlay-file" type="file" accept=".kml,.geojson,.json,.zip" multiple />
+      <div id="config-note" style="margin-top:8px;">
+        Add KML, GeoJSON, or a zipped Shapefile (.zip containing .shp/.dbf/.shx/.prj)
+        &mdash; e.g. tower line alignment or land boundaries. Toggle each on/off
+        from the layer switcher on the map. DWG/DXF isn't supported by browsers;
+        convert to one of the above first (e.g. via QGIS or AutoCAD export).
+        Lines with a CAD-style <code>Color</code> attribute (AutoCAD Color Index)
+        are drawn using that color automatically, at a fixed 0.5mm weight.
+      </div>
+    </div>
+    <div class="block">
+      <h2>Data source</h2>
+      <div id="config-note">
+        Connected to the live NBRI Google Sheet (tab: CEP 3 Rambukkana-Galagedara).
+        The map re-fetches automatically on load and every 5 minutes while open.
+        To point it at a different tab or sheet, edit <code>SHEET_CSV_URL</code>
+        near the top of the script.
+      </div>
     </div>
   </div>
   <div id="map"></div>
@@ -367,19 +372,31 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
 <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.min.js"></script>
 
 <script>
-pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.4.120/pdf.worker.min.js';
-
 /* ============================================================
    CONFIG
    ============================================================ */
-const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8PKkh7RDdd1g5boTWjdryadGLVhDkvKUMEjScApNAeWA7TrPrcetA1YiccjQvhPfnZ8ewg1NQugfv/pub?output=csv";
+const SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vS8PKkh7RDdd1g5boTWjdryadGLVhDkvKUMEjScApNAeWA7TrPrcetA1YiccjQvhPfnZ8ewg1NQugfv/pub?gid=364501395&single=true&output=csv";
+
+// Refresh interval while the map stays open (ms). 5 min default.
 const AUTO_REFRESH_MS = 5 * 60 * 1000;
 
+// Coordinate system of your Easting/Northing columns.
+// SLD99 / Sri Lanka Grid 1999 (EPSG:5235) — matches your BH-MT / BH-VD dataset.
 proj4.defs("EPSG:5235", "+proj=tmerc +lat_0=7.000480277777778 +lon_0=80.77171308333334 +k=0.9999238418 +x_0=500000 +y_0=500000 +ellps=evrst30 +towgs84=-0.293,766.95,87.713,0.195704,1.69507,3.47302,-0.039338 +units=m +no_defs");
 
+/* ============================================================
+   SAMPLE DATA — fallback only, used if the live sheet can't be reached
+   ============================================================ */
+const SAMPLE_CSV = `BH Name,Easting,Northing,Elevation,TF,Status,Contractor,Difficulty,Lot,Package,Status-N,Termination Depth,Rock Coring,Groundwater Level
+BH-MT-08,457534.196,539950.47,99.929,TRUE,Completed,NBRI,Paddy Field,Lot 0,Package 2A,2,15,12,2
+BH-MT-07,457571.239,539966.16,100.505,TRUE,Completed,NBRI,Paddy Field,Lot 0,Package 2A,2,15,9,1
+`;
+
+/* ============================================================
+   Status colors
+   ============================================================ */
 const STATUS_COLORS = {
   "Completed": "#2f6f5e",
   "Cancelled": "#c0523f",
@@ -393,13 +410,28 @@ const STATUS_COLORS = {
 const map = L.map('map', { zoomControl: true }).setView([7.45, 80.6], 12);
 
 const baseLayers = {
-  "Street": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '&copy; OpenStreetMap contributors' }),
-  "Satellite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics' }),
+  "Street": L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    maxZoom: 19,
+    attribution: '&copy; OpenStreetMap contributors'
+  }),
+  "Satellite": L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+    maxZoom: 19,
+    attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
+  }),
   "Hybrid": L.layerGroup([
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics' }),
-    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: 'Labels &copy; Esri' })
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Tiles &copy; Esri &mdash; Source: Esri, Maxar, Earthstar Geographics'
+    }),
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Boundaries_and_Places/MapServer/tile/{z}/{y}/{x}', {
+      maxZoom: 19,
+      attribution: 'Labels &copy; Esri'
+    })
   ]),
-  "Terrain": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM &mdash; Style: &copy; OpenTopoMap (CC-BY-SA)' })
+  "Terrain": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
+    maxZoom: 17,
+    attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM &mdash; Style: &copy; OpenTopoMap (CC-BY-SA)'
+  })
 };
 
 baseLayers["Street"].addTo(map);
@@ -411,12 +443,18 @@ const layersControl = L.control.layers(baseLayers, {}, {
 const markersLayer = L.layerGroup();
 map.addLayer(markersLayer);
 
-const LABEL_MIN_ZOOM = 18;
+// Below this zoom level, BH-ID labels are hidden to avoid overlap.
+// Raise this number if labels still look crowded at your zoom levels.
+const LABEL_MIN_ZOOM = 18; // When individual Borehole IDs take over
 
 function updateLabelVisibility(){
   const zoom = map.getZoom();
   const mapDiv = document.getElementById('map');
+  
+  // Package labels display cleanly between zoom 12 and 17
   mapDiv.classList.toggle('show-pkg-labels', zoom >= 12 && zoom < LABEL_MIN_ZOOM);
+  
+  // Borehole labels unlock at deep zoom levels (18+)
   mapDiv.classList.toggle('show-bh-labels', zoom >= LABEL_MIN_ZOOM);
 }
 map.on('zoomend', updateLabelVisibility);
@@ -424,7 +462,7 @@ map.on('zoomend', updateLabelVisibility);
 let allRows = [];
 let markers = [];
 
-function setStatus(text, cls) {
+function setStatus(text, cls){
   document.getElementById('status-text').textContent = text;
   const dot = document.getElementById('status-dot');
   dot.className = '';
@@ -454,202 +492,55 @@ function colorFor(status){
 
 function makeIcon(status) {
   const color = colorFor(status);
+  
+  // Set lower opacity for cancelled points so they sit quietly in the background
   const opacity = (status === "Cancelled") ? "0.5" : "1.0";
+  
   return L.divIcon({
     className: '',
-    html: `<div style="width: 14px; height: 14px; border-radius: 50%; background: ${color}; border: 2px solid #ffffff; box-shadow: 0 0 0 2px ${color}, 0 2px 5px rgba(0,0,0,0.4); opacity: ${opacity}; transition: transform 0.15s ease-in-out;"></div>`,
+    html: `
+      <div style="
+        width: 14px; 
+        height: 14px; 
+        border-radius: 50%; 
+        background: ${color}; 
+        border: 2px solid #ffffff; 
+        box-shadow: 0 0 0 2px ${color}, 0 2px 5px rgba(0,0,0,0.4);
+        opacity: ${opacity};
+        transition: transform 0.15s ease-in-out;
+      "></div>`,
     iconSize: [18, 18],
     iconAnchor: [9, 9],
     popupAnchor: [0, -9]
   });
 }
 
-/* ============================================================
-   CANVAS BOREHOLE LOG GENERATOR
-   ============================================================ */
-function drawBoreholeLog(canvasId, elevation, termDepth, rockCoring, gwLevel) {
-  const canvas = document.getElementById(canvasId);
-  if (!canvas) return;
-  const ctx = canvas.getContext('2d');
-  
-  const w = canvas.width;
-  const h = canvas.height;
-  ctx.clearRect(0, 0, w, h);
-  
-  // Clean values
-  const el = toNum(elevation) || 0.0;
-  const td = toNum(termDepth) || 0.0;
-  const rc = toNum(rockCoring) || 0.0;
-  const gw = toNum(gwLevel);
-  
-  // Layer Math
-  const overburdenThickness = Math.max(0, td - rc);
-  const rockLevelMsl = el - overburdenThickness;
-  const termLevelMsl = el - td;
-  
-  // Scaled coordinates mapping (leave margins for structural labels)
-  const topY = 20;
-  const bottomY = h - 20;
-  const availableH = bottomY - topY;
-  
-  let overburdenY = bottomY;
-  if (td > 0) {
-    overburdenY = topY + (overburdenThickness / td) * availableH;
-  }
-  
-  const colX = 80;
-  const colW = 40;
-  
-  // 1. Render Overburden Stratum (Soil)
-  if (overburdenThickness > 0) {
-    ctx.fillStyle = '#e3d2be';
-    ctx.fillRect(colX, topY, colW, overburdenY - topY);
-    // Soil pattern lines
-    ctx.strokeStyle = '#c4b099';
-    ctx.lineWidth = 1;
-    for (let y = topY + 6; y < overburdenY; y += 12) {
-      ctx.beginPath(); ctx.moveTo(colX + 4, y); ctx.lineTo(colX + 12, y); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(colX + 20, y + 4); ctx.lineTo(colX + 28, y + 4); ctx.stroke();
-    }
-  }
-  
-  // 2. Render Bedrock Stratum
-  if (rc > 0) {
-    ctx.fillStyle = '#cbd5e1';
-    ctx.fillRect(colX, overburdenY, colW, bottomY - overburdenY);
-    // Rock hatch pattern (45 degree cross-hatch marks)
-    ctx.strokeStyle = '#94a3b8';
-    ctx.lineWidth = 1;
-    for (let y = overburdenY + 4; y < bottomY; y += 14) {
-      ctx.beginPath(); ctx.moveTo(colX, y); ctx.lineTo(colX + 12, y - 6); ctx.stroke();
-      ctx.beginPath(); ctx.moveTo(colX + 15, y + 6); ctx.lineTo(colX + 30, y - 1); ctx.stroke();
-    }
-  }
-  
-  // Draw Central Borehole Shaft Lines
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.moveTo(colX, topY); ctx.lineTo(colX, bottomY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(colX + colW, topY); ctx.lineTo(colX + colW, bottomY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(colX, topY); ctx.lineTo(colX + colW, topY); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(colX, bottomY); ctx.lineTo(colX + colW, bottomY); ctx.stroke();
-  
-  // 3. Render Groundwater Table indicator
-  if (gw !== null && gw >= 0 && gw <= td) {
-    let gwY = topY;
-    if (td > 0) gwY = topY + (gw / td) * availableH;
-    
-    ctx.strokeStyle = '#2563eb';
-    ctx.lineWidth = 1.5;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath(); ctx.moveTo(colX - 15, gwY); ctx.lineTo(colX + colW + 15, gwY); ctx.stroke();
-    ctx.setLineDash([]);
-    
-    // Draw water triangle
-    ctx.fillStyle = '#2563eb';
-    ctx.beginPath();
-    ctx.moveTo(colX - 8, gwY); ctx.lineTo(colX - 2, gwY); ctx.lineTo(colX - 5, gwY + 5);
-    ctx.closePath(); ctx.fill();
-    
-    ctx.font = '9px sans-serif';
-    ctx.fillText(`GWL: ${gw.toFixed(2)}m`, colX + colW + 18, gwY + 3);
-  }
-  
-  // 4. Text Annotations & Callouts
-  ctx.fillStyle = '#1e293b';
-  ctx.font = '10px sans-serif';
-  ctx.textAlign = 'right';
-  
-  // Top Ground Level elevation
-  ctx.fillText(`${el.toFixed(2)} m`, colX - 8, topY + 4);
-  ctx.font = '9px sans-serif';
-  ctx.fillStyle = '#64748b';
-  ctx.fillText('GL', colX - 8, topY + 14);
-  
-  // Rock Level Boundary line marker
-  if (overburdenThickness > 0 && rc > 0) {
-    ctx.strokeStyle = '#475569';
-    ctx.lineWidth = 1;
-    ctx.beginPath(); ctx.moveTo(colX - 5, overburdenY); ctx.lineTo(colX, overburdenY); ctx.stroke();
-    ctx.fillStyle = '#1e293b';
-    ctx.font = '10px sans-serif';
-    ctx.fillText(`${rockLevelMsl.toFixed(2)} m`, colX - 8, overburdenY + 4);
-    ctx.font = '9px sans-serif';
-    ctx.fillStyle = '#b3541e';
-    ctx.fillText(`Rock @ ${overburdenThickness.toFixed(2)}m`, colX - 8, overburdenY + 14);
-  }
-  
-  // Termination Level line marker
-  ctx.strokeStyle = '#475569';
-  ctx.lineWidth = 1;
-  ctx.beginPath(); ctx.moveTo(colX - 5, bottomY); ctx.lineTo(colX, bottomY); ctx.stroke();
-  ctx.fillStyle = '#1e293b';
-  ctx.font = '10px sans-serif';
-  ctx.fillText(`${termLevelMsl.toFixed(2)} m`, colX - 8, bottomY + 4);
-  ctx.font = '9px sans-serif';
-  ctx.fillStyle = '#64748b';
-  ctx.fillText(`Term: ${td.toFixed(2)}m`, colX - 8, bottomY + 14);
-  
-  // Thickness Labels plotted directly inside the layers
-  ctx.textAlign = 'center';
-  ctx.font = 'bold 9px sans-serif';
-  if (overburdenThickness > 0) {
-    ctx.fillStyle = '#5c4d3c';
-    ctx.fillText(`${overburdenThickness.toFixed(1)}m`, colX + (colW / 2), topY + ((overburdenY - topY) / 2) + 3);
-  }
-  if (rc > 0) {
-    ctx.fillStyle = '#334155';
-    ctx.fillText(`${rc.toFixed(1)}m`, colX + (colW / 2), overburdenY + ((bottomY - overburdenY) / 2) + 3);
-  }
-}
-
 function popupHtml(row){
   const status = row['Status'] || '';
-  const name = row['BH Name'] || 'Unnamed BH';
-  
-  const el = toNum(row['Elevation']);
-  const td = toNum(row['Termination Depth']);
-  const rc = toNum(row['Rock Coring']);
-  const gw = toNum(row['Groundwater Level']);
-  
-  // Compute descriptive Rock Level mapping fields
-  let rockLevelStr = '-';
-  if (el !== null && td !== null && rc !== null) {
-    const overburden = td - rc;
-    const rockLevelMsl = el - overburden;
-    rockLevelStr = `${rockLevelMsl.toFixed(3)} m MSL (Depth: ${overburden.toFixed(2)}m)`;
-  }
-
   const rows = [
     ['Easting', row['Easting']],
     ['Northing', row['Northing']],
-    ['Elevation (m MSL)', row['Elevation']],
+    ['Elevation (m)', row['Elevation']],
     ['Contractor', row['Contractor Done'] || row['Contractor']],
     ['Difficulty', row['Difficulty']],
     ['Lot', row['Lot']],
     ['Package', row['Package']],
-    ['Commence Date', row['Commence Date']],
-    ['Completed Date', row['Completed Date']],
-    ['Rock Level', rockLevelStr],
     ['Termination Depth (m)', row['Termination Depth']],
+    ['Rock Coring (m)', row['Rock Coring']],
     ['Groundwater Level (m)', row['Groundwater Level']],
-  ].filter(([k,v]) => v !== undefined && v !== null && String(v).trim() !== '' && String(v).trim() !== '-');
+  ].filter(([k,v]) => v !== undefined && v !== null && String(v).trim() !== '');
 
-  const tableRows = rows.map(([k,v]) => `<tr><td class="k">${k}</td><td>: ${v}</td></tr>`).join('');
+  const tableRows = rows.map(([k,v]) => `<tr><td class="k">${k}</td><td>${v}</td></tr>`).join('');
+
   const pdfUrl = (row['PDF Link'] || row['Log PDF'] || row['Borehole Log'] || '').trim();
-  const pdfButton = pdfUrl ? `<a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-link-btn">&#128196; View Full Borehole Log</a>` : '';
-
-  // Generate a distinct unique ID tag for the inline diagram canvas instance
-  const canvasId = `bh_canvas_${name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+  const pdfButton = pdfUrl
+    ? `<a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-link-btn">&#128196; View / Download Borehole Log</a>`
+    : '';
 
   return `
-    <div class="popup-title">${name}</div>
+    <div class="popup-title">${row['BH Name'] || 'Unnamed BH'}</div>
     <span class="status-pill" style="background:${colorFor(status)}">${status || 'Unknown'}</span>
-    <table class="popup-table">${tableRows}</table>
-    <div class="log-container">
-      <div class="log-title">Strata Sketch Profile</div>
-      <canvas id="${canvasId}" class="bh-canvas" width="240" height="150"></canvas>
-    </div>
+    <table class="popup-table" style="margin-top:8px;">${tableRows}</table>
     ${pdfButton}
   `;
 }
@@ -693,7 +584,7 @@ function render(){
 
   let shown = 0;
   const bounds = [];
-  const labeledPackages = new Set();
+  const labeledPackages = new Set(); // Tracks unique packages to prevent overlap text
 
   allRows.forEach(row => {
     const status = row['Status'] || '';
@@ -721,24 +612,23 @@ function render(){
     const marker = L.marker([ll.lat, ll.lon], { icon: makeIcon(status) });
     marker.bindPopup(popupHtml(row));
     
-    // Attach listener to render the canvas drawing after Leaflet adds the HTML element to the DOM
-    marker.on('popupopen', (e) => {
-      const canvasId = `bh_canvas_${name.replace(/[^a-zA-Z0-9]/g, '_')}`;
-      drawBoreholeLog(
-        canvasId, 
-        row['Elevation'], 
-        row['Termination Depth'], 
-        row['Rock Coring'], 
-        row['Groundwater Level']
-      );
-    });
-    
+    // SMART DUAL-TOOLTIP INJECTION
     const cleanPkgName = pkg.trim();
     if (cleanPkgName && !labeledPackages.has(cleanPkgName)) {
-      marker.bindTooltip(`📦 ${cleanPkgName}`, { permanent: true, direction: 'top', offset: [0, -9], className: 'pkg-label' });
-      labeledPackages.add(cleanPkgName);
+      marker.bindTooltip(`📦 ${cleanPkgName}`, {
+        permanent: true,
+        direction: 'top',
+        offset: [0, -9],
+        className: 'pkg-label'
+      });
+      labeledPackages.add(cleanPkgName); // Register package so other markers in this sector stay quiet
     } else {
-      marker.bindTooltip(name, { permanent: true, direction: 'top', offset: [0, -9], className: 'bh-label' });
+      marker.bindTooltip(name, {
+        permanent: true,
+        direction: 'top',
+        offset: [0, -9],
+        className: 'bh-label'
+      });
     }
 
     markersLayer.addLayer(marker);
@@ -748,12 +638,15 @@ function render(){
 
   document.getElementById('count').textContent = `${shown} of ${allRows.length} boreholes shown`;
 
+  // Fix the fitBounds routine to run only once so it doesn't snap zoom scales on auto-refresh
   if (bounds.length && !window.hasInitialZoomed){
     map.fitBounds(bounds, { padding: [40,40], maxZoom: 16 });
     window.hasInitialZoomed = true;
   }
+
   updateLabelVisibility();
 }
+
 
 function uniqueVals(rows, key){
   return [...new Set(rows.map(r => (r[key] || '').trim()).filter(v => v))].sort();
@@ -782,9 +675,13 @@ function fetchData(){
       },
       error: (err) => {
         console.error(err);
-        setStatus('Could not reach sheet — parsing error', 'err');
+        setStatus('Could not reach sheet — showing sample data', 'err');
+        Papa.parse(SAMPLE_CSV, { header:true, skipEmptyLines:true, complete: r => loadRows(r.data) });
       }
     });
+  } else {
+    Papa.parse(SAMPLE_CSV, { header:true, skipEmptyLines:true, complete: r => loadRows(r.data) });
+    setStatus('Sample data (not connected to a live sheet)');
   }
 }
 
@@ -799,95 +696,217 @@ if (SHEET_CSV_URL && AUTO_REFRESH_MS > 0){
 }
 
 /* ============================================================
-   OVERLAY ENGINE
+   AutoCAD Color Index (ACI) → hex, for CAD-derived shapefiles.
+   Source values match AutoCAD's default indexed palette.
    ============================================================ */
-function styleForOverlayFeature(feature){
-  return { color: '#2b6cb0', weight: 1.9, opacity: 0.95, fillColor: '#2b6cb0', fillOpacity: 0.15 };
+const ACI_COLORS = {
+  1:"#ff0000",2:"#ffff00",3:"#00ff00",4:"#00ffff",5:"#0000ff",6:"#ff00ff",
+  7:"#1a1a1a", /* pure white in ACI, but rendered dark here so it's visible on a light basemap */
+  8:"#808080",9:"#c0c0c0",10:"#ff0000",11:"#ff7f7f",12:"#a50000",13:"#a55252",
+  14:"#7f0000",15:"#7f3f3f",16:"#4c0000",17:"#4c2626",18:"#260000",19:"#261313",
+  20:"#ff3f00",21:"#ff9f7f",22:"#a52900",23:"#a56652",24:"#7f1f00",25:"#7f4c3f",
+  26:"#4c1300",27:"#4c2926",28:"#260900",29:"#261413",30:"#ff7f00",31:"#ffbf7f",
+  32:"#a55200",33:"#a57952",34:"#7f3f00",35:"#7f5f3f",36:"#4c2600",37:"#4c3926",
+  38:"#260f00",39:"#261c13",40:"#ffbf00",41:"#ffdf7f",42:"#a57c00",43:"#a59852",
+  44:"#7f5f00",45:"#7f743f",46:"#4c3900",47:"#4c4626",48:"#261c00",49:"#262113",
+  50:"#ffff00",51:"#ffff7f",52:"#a5a500",53:"#a5a552",54:"#7f7f00",55:"#7f7f3f",
+  56:"#4c4c00",57:"#4c4c26",58:"#262600",59:"#262613",60:"#bfff00",61:"#dfff7f",
+  62:"#7ca500",63:"#98a552",64:"#5f7f00",65:"#747f3f",66:"#394c00",67:"#464c26",
+  68:"#1c2600",69:"#212613",70:"#7fff00",71:"#bfff7f",72:"#52a500",73:"#79a552",
+  74:"#3f7f00",75:"#5f7f3f",76:"#264c00",77:"#394c26",78:"#132600",79:"#1c2613",
+  80:"#3fff00",81:"#9fff7f",82:"#29a500",83:"#66a552",84:"#1f7f00",85:"#4c7f3f",
+  86:"#134c00",87:"#294c26",88:"#092600",89:"#142613",90:"#00ff00",91:"#7fff7f",
+  92:"#00a500",93:"#52a552",94:"#007f00",95:"#3f7f3f",96:"#004c00",97:"#264c26",
+  98:"#002600",99:"#132613",100:"#00ff3f",101:"#7fff9f",102:"#00a529",103:"#52a566",
+  104:"#007f1f",105:"#3f7f4c",106:"#004c13",107:"#264c29",108:"#002609",109:"#13261c",
+  110:"#00ff7f",111:"#7fffbf",112:"#00a552",113:"#52a579",114:"#007f3f",115:"#3f7f5f",
+  116:"#004c26",117:"#264c39",118:"#00260f",119:"#13261c",120:"#00ffbf",121:"#7fffdf",
+  122:"#00a57c",123:"#52a598",124:"#007f5f",125:"#3f7f74",126:"#004c39",127:"#264c46",
+  128:"#00261c",129:"#132621",130:"#00ffff",131:"#7fffff",132:"#00a5a5",133:"#52a5a5",
+  134:"#007f7f",135:"#3f7f7f",136:"#004c4c",137:"#264c4c",138:"#002626",139:"#132626",
+  140:"#00bfff",141:"#7fdfff",142:"#007ca5",143:"#5298a5",144:"#005f7f",145:"#3f747f",
+  146:"#00394c",147:"#26464c",148:"#001c26",149:"#132126",150:"#007fff",151:"#7fbfff",
+  152:"#0052a5",153:"#5279a5",154:"#003f7f",155:"#3f5f7f",156:"#00264c",157:"#26394c",
+  158:"#001326",159:"#131c26",160:"#003fff",161:"#7f9fff",162:"#0029a5",163:"#5266a5",
+  164:"#001f7f",165:"#3f4c7f",166:"#00134c",167:"#26294c",168:"#000926",169:"#131426",
+  170:"#0000ff",171:"#7f7fff",172:"#0000a5",173:"#5252a5",174:"#00007f",175:"#3f3f7f",
+  176:"#00004c",177:"#26264c",178:"#000026",179:"#131326",180:"#3f00ff",181:"#9f7fff",
+  182:"#2900a5",183:"#6652a5",184:"#1f007f",185:"#4c3f7f",186:"#13004c",187:"#29264c",
+  188:"#090026",189:"#141326",190:"#7f00ff",191:"#bf7fff",192:"#5200a5",193:"#7952a5",
+  194:"#3f007f",195:"#5f3f7f",196:"#26004c",197:"#39264c",198:"#0f0026",199:"#1c1326",
+  200:"#bf00ff",201:"#df7fff",202:"#7c00a5",203:"#9852a5",204:"#5f007f",205:"#743f7f",
+  206:"#39004c",207:"#46264c",208:"#1c0026",209:"#211326",210:"#ff00ff",211:"#ff7fff",
+  212:"#a500a5",213:"#a552a5",214:"#7f007f",215:"#7f3f7f",216:"#4c004c",217:"#4c264c",
+  218:"#260026",219:"#261326",220:"#ff00bf",221:"#ff7fdf",222:"#a5007c",223:"#a55298",
+  224:"#7f005f",225:"#7f3f74",226:"#4c0039",227:"#4c2646",228:"#26001c",229:"#261321",
+  230:"#ff007f",231:"#ff7fbf",232:"#a50052",233:"#a55279",234:"#7f003f",235:"#7f3f5f",
+  236:"#4c0026",237:"#4c2639",238:"#260013",239:"#26131c",240:"#ff003f",241:"#ff7f9f",
+  242:"#a50029",243:"#a55266",244:"#7f001f",245:"#7f3f4c",246:"#4c0013",247:"#4c2629",
+  248:"#260009",249:"#261314",250:"#333333",251:"#5b5b5b",252:"#828282",253:"#aaaaaa",
+  254:"#d2d2d2",255:"#ffffff"
+};
+
+function aciToHex(aci){
+  return ACI_COLORS[aci] || '#2b6cb0';
 }
 
+/* Fixed line weight for overlay features, approximating 0.5mm on screen. */
+const OVERLAY_LINE_WEIGHT_PX = 1.9;
+
+function dashArrayForLinetype(lt){
+  const s = (lt || '').toUpperCase();
+  if (s.includes('DASH')) return '8,6';
+  if (s.includes('CENTER')) return '12,4,2,4';
+  if (s.includes('HIDDEN')) return '4,4';
+  if (s.includes('DOT') || s.includes('PHANTOM')) return '2,4';
+  return null; // solid / Continuous
+}
+
+function styleForOverlayFeature(feature){
+  const props = (feature && feature.properties) || {};
+  let color = '#2b6cb0';
+  const rawColor = props.Color !== undefined ? props.Color : props.EntColor;
+  if (rawColor !== undefined && rawColor !== null && String(rawColor).trim() !== ''){
+    const aci = parseInt(rawColor, 10);
+    if (!isNaN(aci)) color = aciToHex(aci);
+  }
+  const lt = props.Linetype || props.EntLinetyp || '';
+  return {
+    color: color,
+    weight: OVERLAY_LINE_WEIGHT_PX,
+    dashArray: dashArrayForLinetype(lt),
+    opacity: 0.95,
+    fillColor: color,
+    fillOpacity: 0.15
+  };
+}
+
+/* ============================================================
+   Overlay layers — KML, GeoJSON, zipped Shapefile
+   ============================================================ */
 let overlayCount = 0;
+
 function addOverlayLayer(name, geojson, fitToBounds){
   if (fitToBounds === undefined) fitToBounds = true;
-  let layer = L.geoJSON(geojson, {
-    style: styleForOverlayFeature,
-    pointToLayer: (feature, latlng) => L.circleMarker(latlng, { radius: 5, color: '#2b6cb0', fillColor: '#2b6cb0', fillOpacity: 0.85 })
-  });
-  overlayCount++;
-  layer.addTo(map);
-  layersControl.addOverlay(layer, overlayCount + '. ' + name);
-  if (fitToBounds){
-    try { if (layer.getBounds().isValid()) map.fitBounds(layer.getBounds(), { padding: [40, 40] }); } catch (e) {}
-  }
-}
-
-function parseSpatialPdf(file) {
-  const reader = new FileReader();
-  reader.onload = async function() {
-    try {
-      const typedarray = new Uint8Array(this.result);
-      const pdf = await pdfjsLib.getDocument(typedarray).promise;
-      let extractedFeatures = [];
-      const coordRegex = /(?:E|Easting)?[:\s]*(4[0-9]{5}(?:\.[0-9]+)?)\s*[\s,;\/]\s*(?:N|Northing)?[:\s]*(5[0-9]{5}(?:\.[0-9]+)?)/gi;
-      
-      for (let i = 1; i <= pdf.numPages; i++) {
-        const page = await pdf.getPage(i);
-        const textContent = await page.getTextContent();
-        const pageText = textContent.items.map(item => item.str).join(" ");
-        let match;
-        while ((match = coordRegex.exec(pageText)) !== null) {
-          const easting = parseFloat(match[1]);
-          const northing = parseFloat(match[2]);
-          extractedFeatures.push({
-            type: "Feature",
-            properties: { name: `PDF Ref: E:${easting} N:${northing}`, Source: file.name, Page: i },
-            geometry: { type: "Point", coordinates: [easting, northing] }
-          });
-        }
-      }
-      if (extractedFeatures.length > 0) {
-        extractedFeatures.forEach(f => {
-          const projected = convertToLatLon(f.geometry.coordinates[0], f.geometry.coordinates[1]);
-          if (projected) f.geometry.coordinates = [projected.lon, projected.lat];
+  let layer;
+  try {
+    layer = L.geoJSON(geojson, {
+      style: styleForOverlayFeature,
+      pointToLayer: (feature, latlng) => {
+        const s = styleForOverlayFeature(feature);
+        return L.circleMarker(latlng, {
+          radius: 5, color: s.color, weight: 1.5, fillColor: s.color, fillOpacity: 0.85
         });
-        const geojsonCollection = { type: "FeatureCollection", features: extractedFeatures };
-        addOverlayLayer(`PDF: ${file.name}`, geojsonCollection);
       }
-    } catch (err) { alert("Error reading PDF content: " + err.message); }
-  };
-  reader.readAsArrayBuffer(file);
+    });
+  } catch (err) {
+    alert('Could not draw "' + name + '": ' + err.message);
+    return;
+  }
+  overlayCount++;
+  const label = overlayCount + '. ' + name;
+  layer.addTo(map);
+  layersControl.addOverlay(layer, label);
+  if (fitToBounds){
+    try {
+      const b = layer.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+    } catch (e) { /* no valid bounds, ignore */ }
+  }
 }
 
 function loadOverlayFile(file){
   const ext = file.name.split('.').pop().toLowerCase();
-  if (ext === 'pdf') { parseSpatialPdf(file); }
-  else if (ext === 'kml'){
+
+  if (ext === 'kml'){
     const reader = new FileReader();
-    reader.onload = () => { const dom = new DOMParser().parseFromString(reader.result, 'text/xml'); addOverlayLayer(file.name, toGeoJSON.kml(dom)); };
+    reader.onload = () => {
+      try {
+        const dom = new DOMParser().parseFromString(reader.result, 'text/xml');
+        addOverlayLayer(file.name, toGeoJSON.kml(dom));
+      } catch (err) {
+        alert('Could not parse "' + file.name + '" as KML: ' + err.message);
+      }
+    };
     reader.readAsText(file);
+
   } else if (ext === 'geojson' || ext === 'json'){
     const reader = new FileReader();
-    reader.onload = () => { addOverlayLayer(file.name, JSON.parse(reader.result)); };
+    reader.onload = () => {
+      try {
+        addOverlayLayer(file.name, JSON.parse(reader.result));
+      } catch (err) {
+        alert('Could not parse "' + file.name + '" as GeoJSON: ' + err.message);
+      }
+    };
     reader.readAsText(file);
+
   } else if (ext === 'zip'){
     const reader = new FileReader();
-    reader.onload = () => { shp(reader.result).then(geojson => addOverlayLayer(file.name, geojson)); };
+    reader.onload = () => {
+      shp(reader.result)
+        .then(geojson => addOverlayLayer(file.name, geojson))
+        .catch(err => alert('Could not parse shapefile "' + file.name + '": ' + err.message));
+    };
     reader.readAsArrayBuffer(file);
+
+  } else if (ext === 'dwg' || ext === 'dxf'){
+    alert('"' + file.name + '" is a ' + ext.toUpperCase() + ' file, which browsers can\'t read directly.\n\nConvert it to KML, GeoJSON, or a zipped Shapefile first (e.g. via QGIS — free — or an export/save-as in AutoCAD Map 3D / Civil 3D), then upload the converted file here.');
+
+  } else {
+    alert('Unsupported file type: .' + ext + '. Use KML, GeoJSON, or a zipped Shapefile.');
   }
 } 
+
+/* ============================================================
+   Permanent overlay — auto-loads on every page view, for everyone
+   ============================================================ */
+const PERMANENT_OVERLAYS = [
+  { name: "CEP3 Road Corridor", url: "Polyline_cep32.zip" }
+];
+
+function loadPermanentOverlays(){
+  PERMANENT_OVERLAYS.forEach(o => {
+    fetch(o.url)
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      })
+      .then(buf => shp(buf))
+      .then(geojson => addOverlayLayer(o.name, geojson, false))
+      .catch(err => console.error('Could not load permanent overlay "' + o.name + '":', err));
+  });
+}
+loadPermanentOverlays();
 
 document.getElementById('overlay-file').addEventListener('change', (e) => {
   Array.from(e.target.files).forEach(loadOverlayFile);
   e.target.value = '';
 });
 
+/* ============================================================
+   Sidebar toggle (mobile drawer / desktop collapse)
+   ============================================================ */
 const appEl = document.getElementById('app');
 const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
 function toggleSidebar(){
-  appEl.classList.toggle(isMobile() ? 'sidebar-open-mobile' : 'sidebar-collapsed-desktop');
+  if (isMobile()){
+    appEl.classList.toggle('sidebar-open-mobile');
+  } else {
+    appEl.classList.toggle('sidebar-collapsed-desktop');
+  }
   setTimeout(() => map.invalidateSize(), 260);
 }
 document.getElementById('sidebar-toggle').addEventListener('click', toggleSidebar);
-document.getElementById('sidebar-backdrop').addEventListener('click', () => { appEl.classList.remove('sidebar-open-mobile'); });
+document.getElementById('sidebar-backdrop').addEventListener('click', () => {
+  appEl.classList.remove('sidebar-open-mobile');
+});
+
+// Start collapsed on phones so the map is visible immediately.
+if (isMobile()){
+  appEl.classList.remove('sidebar-open-mobile');
+}
 </script>
 </body>
 </html>
