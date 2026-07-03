@@ -335,6 +335,8 @@
         &mdash; e.g. tower line alignment or land boundaries. Toggle each on/off
         from the layer switcher on the map. DWG/DXF isn't supported by browsers;
         convert to one of the above first (e.g. via QGIS or AutoCAD export).
+        Lines with a CAD-style <code>Color</code> attribute (AutoCAD Color Index)
+        are drawn using that color automatically, at a fixed 0.5mm weight.
       </div>
     </div>
     <div class="block">
@@ -672,18 +674,108 @@ if (SHEET_CSV_URL && AUTO_REFRESH_MS > 0){
 }
 
 /* ============================================================
+   AutoCAD Color Index (ACI) → hex, for CAD-derived shapefiles.
+   Source values match AutoCAD's default indexed palette.
+   ============================================================ */
+const ACI_COLORS = {
+  1:"#ff0000",2:"#ffff00",3:"#00ff00",4:"#00ffff",5:"#0000ff",6:"#ff00ff",
+  7:"#1a1a1a", /* pure white in ACI, but rendered dark here so it's visible on a light basemap */
+  8:"#808080",9:"#c0c0c0",10:"#ff0000",11:"#ff7f7f",12:"#a50000",13:"#a55252",
+  14:"#7f0000",15:"#7f3f3f",16:"#4c0000",17:"#4c2626",18:"#260000",19:"#261313",
+  20:"#ff3f00",21:"#ff9f7f",22:"#a52900",23:"#a56652",24:"#7f1f00",25:"#7f4c3f",
+  26:"#4c1300",27:"#4c2926",28:"#260900",29:"#261413",30:"#ff7f00",31:"#ffbf7f",
+  32:"#a55200",33:"#a57952",34:"#7f3f00",35:"#7f5f3f",36:"#4c2600",37:"#4c3926",
+  38:"#260f00",39:"#261c13",40:"#ffbf00",41:"#ffdf7f",42:"#a57c00",43:"#a59852",
+  44:"#7f5f00",45:"#7f743f",46:"#4c3900",47:"#4c4626",48:"#261c00",49:"#262113",
+  50:"#ffff00",51:"#ffff7f",52:"#a5a500",53:"#a5a552",54:"#7f7f00",55:"#7f7f3f",
+  56:"#4c4c00",57:"#4c4c26",58:"#262600",59:"#262613",60:"#bfff00",61:"#dfff7f",
+  62:"#7ca500",63:"#98a552",64:"#5f7f00",65:"#747f3f",66:"#394c00",67:"#464c26",
+  68:"#1c2600",69:"#212613",70:"#7fff00",71:"#bfff7f",72:"#52a500",73:"#79a552",
+  74:"#3f7f00",75:"#5f7f3f",76:"#264c00",77:"#394c26",78:"#132600",79:"#1c2613",
+  80:"#3fff00",81:"#9fff7f",82:"#29a500",83:"#66a552",84:"#1f7f00",85:"#4c7f3f",
+  86:"#134c00",87:"#294c26",88:"#092600",89:"#142613",90:"#00ff00",91:"#7fff7f",
+  92:"#00a500",93:"#52a552",94:"#007f00",95:"#3f7f3f",96:"#004c00",97:"#264c26",
+  98:"#002600",99:"#132613",100:"#00ff3f",101:"#7fff9f",102:"#00a529",103:"#52a566",
+  104:"#007f1f",105:"#3f7f4c",106:"#004c13",107:"#264c29",108:"#002609",109:"#13261c",
+  110:"#00ff7f",111:"#7fffbf",112:"#00a552",113:"#52a579",114:"#007f3f",115:"#3f7f5f",
+  116:"#004c26",117:"#264c39",118:"#00260f",119:"#13261c",120:"#00ffbf",121:"#7fffdf",
+  122:"#00a57c",123:"#52a598",124:"#007f5f",125:"#3f7f74",126:"#004c39",127:"#264c46",
+  128:"#00261c",129:"#132621",130:"#00ffff",131:"#7fffff",132:"#00a5a5",133:"#52a5a5",
+  134:"#007f7f",135:"#3f7f7f",136:"#004c4c",137:"#264c4c",138:"#002626",139:"#132626",
+  140:"#00bfff",141:"#7fdfff",142:"#007ca5",143:"#5298a5",144:"#005f7f",145:"#3f747f",
+  146:"#00394c",147:"#26464c",148:"#001c26",149:"#132126",150:"#007fff",151:"#7fbfff",
+  152:"#0052a5",153:"#5279a5",154:"#003f7f",155:"#3f5f7f",156:"#00264c",157:"#26394c",
+  158:"#001326",159:"#131c26",160:"#003fff",161:"#7f9fff",162:"#0029a5",163:"#5266a5",
+  164:"#001f7f",165:"#3f4c7f",166:"#00134c",167:"#26294c",168:"#000926",169:"#131426",
+  170:"#0000ff",171:"#7f7fff",172:"#0000a5",173:"#5252a5",174:"#00007f",175:"#3f3f7f",
+  176:"#00004c",177:"#26264c",178:"#000026",179:"#131326",180:"#3f00ff",181:"#9f7fff",
+  182:"#2900a5",183:"#6652a5",184:"#1f007f",185:"#4c3f7f",186:"#13004c",187:"#29264c",
+  188:"#090026",189:"#141326",190:"#7f00ff",191:"#bf7fff",192:"#5200a5",193:"#7952a5",
+  194:"#3f007f",195:"#5f3f7f",196:"#26004c",197:"#39264c",198:"#0f0026",199:"#1c1326",
+  200:"#bf00ff",201:"#df7fff",202:"#7c00a5",203:"#9852a5",204:"#5f007f",205:"#743f7f",
+  206:"#39004c",207:"#46264c",208:"#1c0026",209:"#211326",210:"#ff00ff",211:"#ff7fff",
+  212:"#a500a5",213:"#a552a5",214:"#7f007f",215:"#7f3f7f",216:"#4c004c",217:"#4c264c",
+  218:"#260026",219:"#261326",220:"#ff00bf",221:"#ff7fdf",222:"#a5007c",223:"#a55298",
+  224:"#7f005f",225:"#7f3f74",226:"#4c0039",227:"#4c2646",228:"#26001c",229:"#261321",
+  230:"#ff007f",231:"#ff7fbf",232:"#a50052",233:"#a55279",234:"#7f003f",235:"#7f3f5f",
+  236:"#4c0026",237:"#4c2639",238:"#260013",239:"#26131c",240:"#ff003f",241:"#ff7f9f",
+  242:"#a50029",243:"#a55266",244:"#7f001f",245:"#7f3f4c",246:"#4c0013",247:"#4c2629",
+  248:"#260009",249:"#261314",250:"#333333",251:"#5b5b5b",252:"#828282",253:"#aaaaaa",
+  254:"#d2d2d2",255:"#ffffff"
+};
+
+function aciToHex(aci){
+  return ACI_COLORS[aci] || '#2b6cb0';
+}
+
+/* Fixed line weight for overlay features, approximating 0.5mm on screen. */
+const OVERLAY_LINE_WEIGHT_PX = 1.9;
+
+function dashArrayForLinetype(lt){
+  const s = (lt || '').toUpperCase();
+  if (s.includes('DASH')) return '8,6';
+  if (s.includes('CENTER')) return '12,4,2,4';
+  if (s.includes('HIDDEN')) return '4,4';
+  if (s.includes('DOT') || s.includes('PHANTOM')) return '2,4';
+  return null; // solid / Continuous
+}
+
+function styleForOverlayFeature(feature){
+  const props = (feature && feature.properties) || {};
+  let color = '#2b6cb0';
+  const rawColor = props.Color !== undefined ? props.Color : props.EntColor;
+  if (rawColor !== undefined && rawColor !== null && String(rawColor).trim() !== ''){
+    const aci = parseInt(rawColor, 10);
+    if (!isNaN(aci)) color = aciToHex(aci);
+  }
+  const lt = props.Linetype || props.EntLinetyp || '';
+  return {
+    color: color,
+    weight: OVERLAY_LINE_WEIGHT_PX,
+    dashArray: dashArrayForLinetype(lt),
+    opacity: 0.95,
+    fillColor: color,
+    fillOpacity: 0.15
+  };
+}
+
+/* ============================================================
    Overlay layers — KML, GeoJSON, zipped Shapefile
    ============================================================ */
 let overlayCount = 0;
 
-function addOverlayLayer(name, geojson){
+function addOverlayLayer(name, geojson, fitToBounds){
+  if (fitToBounds === undefined) fitToBounds = true;
   let layer;
   try {
     layer = L.geoJSON(geojson, {
-      style: { color: '#2b6cb0', weight: 3, fillColor: '#4299e1', fillOpacity: 0.2 },
-      pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
-        radius: 5, color: '#2b6cb0', weight: 1.5, fillColor: '#4299e1', fillOpacity: 0.85
-      })
+      style: styleForOverlayFeature,
+      pointToLayer: (feature, latlng) => {
+        const s = styleForOverlayFeature(feature);
+        return L.circleMarker(latlng, {
+          radius: 5, color: s.color, weight: 1.5, fillColor: s.color, fillOpacity: 0.85
+        });
+      }
     });
   } catch (err) {
     alert('Could not draw "' + name + '": ' + err.message);
@@ -693,10 +785,12 @@ function addOverlayLayer(name, geojson){
   const label = overlayCount + '. ' + name;
   layer.addTo(map);
   layersControl.addOverlay(layer, label);
-  try {
-    const b = layer.getBounds();
-    if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
-  } catch (e) { /* no valid bounds, ignore */ }
+  if (fitToBounds){
+    try {
+      const b = layer.getBounds();
+      if (b.isValid()) map.fitBounds(b, { padding: [40, 40] });
+    } catch (e) { /* no valid bounds, ignore */ }
+  }
 }
 
 function loadOverlayFile(file){
@@ -741,6 +835,27 @@ function loadOverlayFile(file){
     alert('Unsupported file type: .' + ext + '. Use KML, GeoJSON, or a zipped Shapefile.');
   }
 } 
+
+/* ============================================================
+   Permanent overlay — auto-loads on every page view, for everyone
+   ============================================================ */
+const PERMANENT_OVERLAYS = [
+  { name: "CEP3 Road Corridor", url: "Polyline_cep32.zip" }
+];
+
+function loadPermanentOverlays(){
+  PERMANENT_OVERLAYS.forEach(o => {
+    fetch(o.url)
+      .then(r => {
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        return r.arrayBuffer();
+      })
+      .then(buf => shp(buf))
+      .then(geojson => addOverlayLayer(o.name, geojson, false))
+      .catch(err => console.error('Could not load permanent overlay "' + o.name + '":', err));
+  });
+}
+loadPermanentOverlays();
 
 document.getElementById('overlay-file').addEventListener('change', (e) => {
   Array.from(e.target.files).forEach(loadOverlayFile);
