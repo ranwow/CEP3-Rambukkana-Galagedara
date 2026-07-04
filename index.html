@@ -215,6 +215,9 @@
   .leaflet-popup-content-wrapper{
     border-radius:8px;
   }
+  .leaflet-popup-content{
+    margin:12px 14px;
+  }
   .popup-title{
     font-weight:700;
     font-size:14px;
@@ -255,6 +258,29 @@
   }
   .pdf-link-btn:hover{
     background:#255a4c;
+  }
+  .bh-log-wrap{
+    margin-top:10px;
+    padding-top:10px;
+    border-top:1px solid var(--line);
+  }
+  .bh-log-title{
+    font-size:10.5px;
+    text-transform:uppercase;
+    letter-spacing:0.05em;
+    color:var(--muted);
+    margin-bottom:4px;
+    font-weight:600;
+  }
+  .bh-log-row{
+    display:flex;
+    gap:10px;
+    align-items:flex-start;
+  }
+  .bh-log-caption{
+    font-size:11px;
+    color:var(--muted);
+    margin-top:4px;
   }
   .leaflet-control-layers{
     border-radius:8px !important;
@@ -360,7 +386,8 @@
         Connected to the live NBRI Google Sheet (tab: CEP 3 Rambukkana-Galagedara).
         The map re-fetches automatically on load and every 5 minutes while open.
         To point it at a different tab or sheet, edit <code>SHEET_CSV_URL</code>
-        near the top of the script.
+        near the top of the script. Add columns named <code>Commence Date</code> and
+        <code>Completed Date</code> to your sheet to show them in each borehole's popup.
       </div>
     </div>
   </div>
@@ -431,6 +458,11 @@ const baseLayers = {
   "Terrain": L.tileLayer('https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', {
     maxZoom: 17,
     attribution: 'Map data: &copy; OpenStreetMap contributors, SRTM &mdash; Style: &copy; OpenTopoMap (CC-BY-SA)'
+  }),
+  "Google Hybrid": L.tileLayer('https://{s}.google.com/vt/lyrs=y&x={x}&y={y}&z={z}', {
+    maxZoom: 20,
+    subdomains: ['mt0', 'mt1', 'mt2', 'mt3'],
+    attribution: '&copy; Google'
   })
 };
 
@@ -477,6 +509,14 @@ function toNum(v){
   return isNaN(n) ? null : n;
 }
 
+function getFirst(row, keys){
+  for (const k of keys){
+    const v = row[k];
+    if (v !== undefined && v !== null && String(v).trim() !== '') return String(v).trim();
+  }
+  return '';
+}
+
 function convertToLatLon(easting, northing){
   try {
     const [lon, lat] = proj4('EPSG:5235', 'WGS84', [easting, northing]);
@@ -515,9 +555,121 @@ function makeIcon(status) {
   });
 }
 
+/* ============================================================
+   Borehole schematic log — soil vs rock, groundwater, RLs
+   Computed entirely from Elevation / Termination Depth /
+   Rock Coring / Groundwater Level — no extra data entry needed.
+   ============================================================ */
+function computeBHLevels(row){
+  const elevation = toNum(row['Elevation']);
+  const termDepth = toNum(row['Termination Depth']);
+  const rockCoring = toNum(row['Rock Coring']);
+  const gwDepth = toNum(row['Groundwater Level']);
+
+  let overburden = null, rockLevel = null, terminationLevel = null, gwLevel = null;
+
+  if (termDepth !== null && rockCoring !== null){
+    overburden = Math.max(termDepth - rockCoring, 0);
+    if (elevation !== null) rockLevel = elevation - overburden;
+  }
+  if (elevation !== null && termDepth !== null){
+    terminationLevel = elevation - termDepth;
+  }
+  if (elevation !== null && gwDepth !== null){
+    gwLevel = elevation - gwDepth;
+  }
+
+  return { elevation, termDepth, rockCoring, gwDepth, overburden, rockLevel, terminationLevel, gwLevel };
+}
+
+function rockLevelDisplay(levels){
+  if (levels.rockLevel !== null) return levels.rockLevel.toFixed(2) + ' m (RL)';
+  if (levels.overburden !== null) return 'Depth ' + levels.overburden.toFixed(2) + ' m';
+  return '';
+}
+
+function buildBoreholeLogSvg(levels){
+  const { termDepth, overburden, rockCoring, gwDepth } = levels;
+  if (termDepth === null || termDepth <= 0) return '';
+
+  const colH = 120, colW = 26, x0 = 8, y0 = 12;
+  const scale = colH / termDepth;
+
+  const overburdenPx = overburden !== null ? Math.min(overburden * scale, colH) : colH;
+  const rockPx = colH - overburdenPx;
+  const gwPx = (gwDepth !== null) ? Math.min(Math.max(gwDepth * scale, 0), colH) : null;
+
+  let svg = `<svg width="200" height="${colH + 24}" viewBox="0 0 200 ${colH + 24}" xmlns="http://www.w3.org/2000/svg">`;
+
+  // Soil (overburden) block
+  svg += `<rect x="${x0}" y="${y0}" width="${colW}" height="${overburdenPx.toFixed(1)}" fill="#c9a876" stroke="#8a7350" stroke-width="0.5"/>`;
+  // Rock block
+  if (rockPx > 0.3){
+    svg += `<rect x="${x0}" y="${(y0+overburdenPx).toFixed(1)}" width="${colW}" height="${rockPx.toFixed(1)}" fill="#8f8f95" stroke="#5c5c60" stroke-width="0.5"/>`;
+    // simple rock hatching
+    for (let hy = overburdenPx; hy < colH; hy += 10){
+      svg += `<line x1="${x0}" y1="${(y0+hy).toFixed(1)}" x2="${(x0+colW).toFixed(1)}" y2="${(y0+hy).toFixed(1)}" stroke="#5c5c60" stroke-width="0.4" opacity="0.4"/>`;
+    }
+  }
+  // Outer border of column
+  svg += `<rect x="${x0}" y="${y0}" width="${colW}" height="${colH.toFixed(1)}" fill="none" stroke="#3a3a3a" stroke-width="1"/>`;
+
+  // Groundwater marker
+  if (gwPx !== null){
+    const gwY = (y0 + gwPx).toFixed(1);
+    svg += `<line x1="${x0-4}" y1="${gwY}" x2="${x0+colW+4}" y2="${gwY}" stroke="#1e6fd9" stroke-width="1.2" stroke-dasharray="3,2"/>`;
+    svg += `<polygon points="${x0-4},${gwY} ${x0-10},${Number(gwY)-4} ${x0-10},${Number(gwY)+4}" fill="#1e6fd9"/>`;
+    svg += `<text x="${x0+colW+8}" y="${Number(gwY)+3}" font-size="9" fill="#1e6fd9" font-weight="600">GWL ${gwDepth.toFixed(2)}m</text>`;
+  }
+
+  // Ground level label (top)
+  svg += `<text x="${x0+colW+8}" y="${y0+4}" font-size="9" fill="#1c2b2a" font-weight="600">Ground Level</text>`;
+
+  // Rock boundary label
+  if (overburden !== null){
+    const boundY = (y0 + overburdenPx).toFixed(1);
+    svg += `<line x1="${x0+colW+2}" y1="${boundY}" x2="${x0+colW+6}" y2="${boundY}" stroke="#3a3a3a" stroke-width="1"/>`;
+  }
+
+  // Termination label (bottom)
+  const bottomY = (y0 + colH + 10).toFixed(1);
+  svg += `<text x="${x0}" y="${bottomY}" font-size="9" fill="#1c2b2a" font-weight="600">Term. ${termDepth.toFixed(2)}m</text>`;
+
+  svg += `</svg>`;
+  return svg;
+}
+
+function buildBoreholeLogHtml(row){
+  const levels = computeBHLevels(row);
+  if (levels.termDepth === null) return '';
+
+  const svg = buildBoreholeLogSvg(levels);
+  const overburdenTxt = levels.overburden !== null ? levels.overburden.toFixed(2) + ' m soil' : '';
+  const rockTxt = levels.rockCoring !== null ? levels.rockCoring.toFixed(2) + ' m rock cored' : '';
+  const rlTxt = levels.rockLevel !== null ? ('Rock Level ' + levels.rockLevel.toFixed(2) + ' m') : '';
+  const termRlTxt = levels.terminationLevel !== null ? ('Term. Level ' + levels.terminationLevel.toFixed(2) + ' m') : '';
+
+  const captionParts = [overburdenTxt, rockTxt, rlTxt, termRlTxt].filter(Boolean).join(' &middot; ');
+
+  return `
+    <div class="bh-log-wrap">
+      <div class="bh-log-title">Borehole Log (schematic)</div>
+      <div class="bh-log-row">${svg}</div>
+      <div class="bh-log-caption">${captionParts}</div>
+    </div>
+  `;
+}
+
 function popupHtml(row){
   const status = row['Status'] || '';
+  const levels = computeBHLevels(row);
+
+  const commenceDate = getFirst(row, ['Commence Date','Date Commenced','Commencement Date','Start Date','Started Date']);
+  const completedDate = getFirst(row, ['Completed Date','Completion Date','Date Completed','Finish Date','End Date']);
+
   const rows = [
+    ['Commence Date', commenceDate],
+    ['Completed Date', completedDate],
     ['Easting', row['Easting']],
     ['Northing', row['Northing']],
     ['Elevation (m)', row['Elevation']],
@@ -526,7 +678,7 @@ function popupHtml(row){
     ['Lot', row['Lot']],
     ['Package', row['Package']],
     ['Termination Depth (m)', row['Termination Depth']],
-    ['Rock Coring (m)', row['Rock Coring']],
+    ['Rock Level (m)', rockLevelDisplay(levels)],
     ['Groundwater Level (m)', row['Groundwater Level']],
   ].filter(([k,v]) => v !== undefined && v !== null && String(v).trim() !== '');
 
@@ -537,10 +689,13 @@ function popupHtml(row){
     ? `<a href="${pdfUrl}" target="_blank" rel="noopener" class="pdf-link-btn">&#128196; View / Download Borehole Log</a>`
     : '';
 
+  const logHtml = buildBoreholeLogHtml(row);
+
   return `
     <div class="popup-title">${row['BH Name'] || 'Unnamed BH'}</div>
     <span class="status-pill" style="background:${colorFor(status)}">${status || 'Unknown'}</span>
     <table class="popup-table" style="margin-top:8px;">${tableRows}</table>
+    ${logHtml}
     ${pdfButton}
   `;
 }
@@ -610,7 +765,7 @@ function render(){
     if (!ll) return;
 
     const marker = L.marker([ll.lat, ll.lon], { icon: makeIcon(status) });
-    marker.bindPopup(popupHtml(row));
+    marker.bindPopup(popupHtml(row), { maxWidth: 280 });
     
     // SMART DUAL-TOOLTIP INJECTION
     const cleanPkgName = pkg.trim();
@@ -701,7 +856,7 @@ if (SHEET_CSV_URL && AUTO_REFRESH_MS > 0){
    ============================================================ */
 const ACI_COLORS = {
   1:"#ff0000",2:"#ffff00",3:"#00ff00",4:"#00ffff",5:"#0000ff",6:"#ff00ff",
-  7:"#1a1a1a", /* pure white in ACI, but rendered dark here so it's visible on a light basemap */
+  7:"#1a1a1a",
   8:"#808080",9:"#c0c0c0",10:"#ff0000",11:"#ff7f7f",12:"#a50000",13:"#a55252",
   14:"#7f0000",15:"#7f3f3f",16:"#4c0000",17:"#4c2626",18:"#260000",19:"#261313",
   20:"#ff3f00",21:"#ff9f7f",22:"#a52900",23:"#a56652",24:"#7f1f00",25:"#7f4c3f",
