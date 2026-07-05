@@ -77,6 +77,52 @@
   #status-dot.ok{background:#5fae7d;}
   #status-dot.err{background:#c0523f;}
 
+  #dashboard{
+    background:#25342f;
+    color:var(--paper);
+    display:flex;
+    flex-wrap:wrap;
+    gap:0;
+    padding:8px 20px;
+    border-bottom:1px solid #3a4b45;
+  }
+  .dash-stat{
+    display:flex;
+    flex-direction:column;
+    padding:0 18px;
+    border-right:1px solid #3a4b45;
+    min-width:90px;
+  }
+  .dash-stat:last-child{
+    border-right:none;
+  }
+  .dash-label{
+    font-size:9.5px;
+    text-transform:uppercase;
+    letter-spacing:0.06em;
+    color:#a9b8b1;
+  }
+  .dash-value{
+    font-size:14px;
+    font-weight:700;
+    color:#fff;
+  }
+  .dash-progress .dash-value{
+    color:#7fd9a8;
+  }
+  @media (max-width: 768px){
+    #dashboard{
+      padding:6px 10px;
+      gap:0;
+    }
+    .dash-stat{
+      padding:0 10px;
+      min-width:70px;
+    }
+    .dash-label{ font-size:8.5px; }
+    .dash-value{ font-size:12px; }
+  }
+
   #app{
     flex:1;
     display:flex;
@@ -212,6 +258,24 @@
     font-size:12px;
     color:var(--muted);
   }
+  .kml-btn{
+    display:block;
+    width:100%;
+    padding:8px 10px;
+    margin-bottom:8px;
+    background:var(--panel);
+    border:1px solid var(--accent);
+    color:var(--accent);
+    border-radius:6px;
+    font-size:12px;
+    font-weight:600;
+    cursor:pointer;
+    text-align:left;
+  }
+  .kml-btn:hover{
+    background:var(--accent);
+    color:#fff;
+  }
   .leaflet-popup-content-wrapper{
     border-radius:8px;
   }
@@ -337,6 +401,15 @@
   <div id="status-line"><span id="status-dot"></span><span id="status-text">Loading data&hellip;</span></div>
 </header>
 
+<div id="dashboard">
+  <div class="dash-stat"><span class="dash-label">Last Updated</span><span id="dash-updated" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat"><span class="dash-label">Total BHs</span><span id="dash-total" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat"><span class="dash-label">Completed</span><span id="dash-completed" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat"><span class="dash-label">In Progress</span><span id="dash-inprogress" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat"><span class="dash-label">Remaining</span><span id="dash-remaining" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat dash-progress"><span class="dash-label">Progress</span><span id="dash-progress" class="dash-value">&mdash;</span></div>
+</div>
+
 <div id="sidebar-backdrop"></div>
 <div id="app">
   <div id="sidebar">
@@ -381,13 +454,16 @@
       </div>
     </div>
     <div class="block">
-      <h2>Data source</h2>
+      <h2>Download Map Data</h2>
+      <button id="kml-bh-only" class="kml-btn">&#8681; KML &mdash; BH locations only</button>
+      <button id="kml-bh-road" class="kml-btn">&#8681; KML &mdash; BH locations + Road trace</button>
+    </div>
+    <div class="block">
+      <h2>&copy; National Building Research Institute</h2>
       <div id="config-note">
-        Connected to the live NBRI Google Sheet (tab: CEP 3 Rambukkana-Galagedara).
-        The map re-fetches automatically on load and every 5 minutes while open.
-        To point it at a different tab or sheet, edit <code>SHEET_CSV_URL</code>
-        near the top of the script. Add columns named <code>Commence Date</code> and
-        <code>Completed Date</code> to your sheet to show them in each borehole's popup.
+        For internal / project use only &mdash; Geotechnical Engineering Division.<br>
+        Map developed by Ranjan, Geologist, NBRI.<br>
+        Connected to the live NBRI Google Sheet; re-fetches automatically every 5 minutes.
       </div>
     </div>
   </div>
@@ -399,6 +475,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/proj4js/2.9.2/proj4.js"></script>
 <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.js"></script>
+<script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
 
 <script>
 /* ============================================================
@@ -671,7 +748,7 @@ function buildBoreholeLogSvg(levels){
     const boundY = (y0 + overburdenPx).toFixed(1);
     svg += `<line x1="${x0-4}" y1="${boundY}" x2="${x0+colW+4}" y2="${boundY}" stroke="#7a2f1e" stroke-width="1.4"/>`;
     svg += `<polygon points="${x0-4},${boundY} ${x0-10},${Number(boundY)-4} ${x0-10},${Number(boundY)+4}" fill="#7a2f1e"/>`;
-    const rlText = rockLevel !== null ? ('Rock Level ' + rockLevel.toFixed(2) + 'm') : ('Rock at ' + overburden.toFixed(2) + 'm depth');
+    const rlText = 'Rock at ' + overburden.toFixed(2) + 'm depth';
     svg += `<text x="${x0+colW+8}" y="${Number(boundY)+3}" font-size="9" fill="#7a2f1e" font-weight="700">${rlText}</text>`;
   }
 
@@ -688,12 +765,13 @@ function buildBoreholeLogHtml(row){
   if (levels.termDepth === null) return '';
 
   const svg = buildBoreholeLogSvg(levels);
-  const overburdenTxt = levels.overburden !== null ? levels.overburden.toFixed(2) + ' m soil' : '';
-  const rockTxt = levels.rockCoring !== null ? levels.rockCoring.toFixed(2) + ' m rock cored' : '';
-  const rlTxt = levels.rockLevel !== null ? ('Rock Level ' + levels.rockLevel.toFixed(2) + ' m') : '';
-  const termRlTxt = levels.terminationLevel !== null ? ('Term. Level ' + levels.terminationLevel.toFixed(2) + ' m') : '';
+  const overburdenTxt = levels.overburden !== null ? levels.overburden.toFixed(2) + 'm soil' : '';
+  const rockTxt = levels.rockCoring !== null ? levels.rockCoring.toFixed(2) + 'm rock' : '';
+  const rlTxt = levels.rockLevel !== null ? ('RL(rock) ' + levels.rockLevel.toFixed(2) + 'm') : '';
+  const termRlTxt = levels.terminationLevel !== null ? ('RL(term) ' + levels.terminationLevel.toFixed(2) + 'm') : '';
+  const gwlRlTxt = levels.gwLevel !== null ? ('RL(GWL) ' + levels.gwLevel.toFixed(2) + 'm') : '';
 
-  const captionParts = [overburdenTxt, rockTxt, rlTxt, termRlTxt].filter(Boolean).join(' &middot; ');
+  const captionParts = [overburdenTxt, rockTxt, rlTxt, termRlTxt, gwlRlTxt].filter(Boolean).join(' &middot; ');
 
   return `
     <div class="bh-log-wrap">
@@ -852,6 +930,25 @@ function uniqueVals(rows, key){
   return [...new Set(rows.map(r => (r[key] || '').trim()).filter(v => v))].sort();
 }
 
+function updateDashboard(){
+  const total = allRows.length;
+  let completed = 0, inProgress = 0, cancelled = 0;
+  allRows.forEach(r => {
+    const s = (r['Status'] || '').trim();
+    if (s === 'Completed') completed++;
+    else if (s === 'In Progress' || s === 'Ongoing') inProgress++;
+    else if (s === 'Cancelled') cancelled++;
+  });
+  const remaining = Math.max(total - completed - inProgress - cancelled, 0);
+  const progressPct = total > 0 ? Math.round((completed / total) * 100) : 0;
+
+  document.getElementById('dash-total').textContent = total;
+  document.getElementById('dash-completed').textContent = completed;
+  document.getElementById('dash-inprogress').textContent = inProgress;
+  document.getElementById('dash-remaining').textContent = remaining;
+  document.getElementById('dash-progress').textContent = progressPct + '%';
+}
+
 function loadRows(rows){
   allRows = rows.map(normalizeRow).filter(r => r['BH Name'] && r['BH Name'].trim());
   populateSelect('f-status', uniqueVals(allRows, 'Status'));
@@ -859,6 +956,7 @@ function loadRows(rows){
   populateSelect('f-lot', uniqueVals(allRows, 'Lot'));
   populateSelect('f-package', uniqueVals(allRows, 'Package'));
   buildLegend(allRows);
+  updateDashboard();
   render();
 }
 
@@ -872,6 +970,7 @@ function fetchData(){
       complete: (results) => {
         loadRows(results.data);
         setStatus('Live — synced ' + new Date().toLocaleTimeString(), 'ok');
+        document.getElementById('dash-updated').textContent = new Date().toLocaleString();
       },
       error: (err) => {
         console.error(err);
@@ -1067,6 +1166,8 @@ const PERMANENT_OVERLAYS = [
   { name: "CEP3 Road Corridor", url: "Polyline_cep32.zip" }
 ];
 
+let roadCorridorGeoJSON = null; // kept for KML export ("with road trace" option)
+
 function loadPermanentOverlays(){
   PERMANENT_OVERLAYS.forEach(o => {
     fetch(o.url)
@@ -1075,7 +1176,10 @@ function loadPermanentOverlays(){
         return r.arrayBuffer();
       })
       .then(buf => shp(buf))
-      .then(geojson => addOverlayLayer(o.name, geojson, false))
+      .then(geojson => {
+        roadCorridorGeoJSON = geojson;
+        addOverlayLayer(o.name, geojson, false);
+      })
       .catch(err => console.error('Could not load permanent overlay "' + o.name + '":', err));
   });
 }
@@ -1109,6 +1213,66 @@ document.getElementById('sidebar-backdrop').addEventListener('click', () => {
 if (isMobile()){
   appEl.classList.remove('sidebar-open-mobile');
 }
+
+/* ============================================================
+   KML export — borehole locations, with optional road trace
+   ============================================================ */
+function boreholesToGeoJSON(){
+  const features = [];
+  allRows.forEach(row => {
+    const e = toNum(row['Easting']);
+    const n = toNum(row['Northing']);
+    if (e === null || n === null) return;
+    const ll = convertToLatLon(e, n);
+    if (!ll) return;
+    features.push({
+      type: 'Feature',
+      properties: {
+        name: row['BH Name'] || 'Unnamed BH',
+        Status: row['Status'] || '',
+        Contractor: row['Contractor Done'] || row['Contractor'] || '',
+        Lot: row['Lot'] || '',
+        Package: row['Package'] || '',
+        Elevation: row['Elevation'] || '',
+        TerminationDepth: row['Termination Depth'] || ''
+      },
+      geometry: { type: 'Point', coordinates: [ll.lon, ll.lat] }
+    });
+  });
+  return { type: 'FeatureCollection', features };
+}
+
+function downloadTextFile(filename, text){
+  const blob = new Blob([text], { type: 'application/vnd.google-earth.kml+xml' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 2000);
+}
+
+function exportKML(includeRoad){
+  const bhGeoJSON = boreholesToGeoJSON();
+  let combined = bhGeoJSON;
+  if (includeRoad && roadCorridorGeoJSON){
+    combined = {
+      type: 'FeatureCollection',
+      features: [...bhGeoJSON.features, ...roadCorridorGeoJSON.features]
+    };
+  } else if (includeRoad && !roadCorridorGeoJSON){
+    alert('Road corridor data is still loading — try again in a moment.');
+    return;
+  }
+  const kml = tokml(combined, { name: 'name', description: 'Status' });
+  const filename = includeRoad ? 'CEP3_Boreholes_and_RoadTrace.kml' : 'CEP3_Boreholes.kml';
+  downloadTextFile(filename, kml);
+}
+
+document.getElementById('kml-bh-only').addEventListener('click', () => exportKML(false));
+document.getElementById('kml-bh-road').addEventListener('click', () => exportKML(true));
 </script>
 </body>
 </html>
