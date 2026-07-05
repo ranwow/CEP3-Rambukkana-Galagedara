@@ -6,6 +6,9 @@
 <title>NBRI Borehole Map - CEP3 - Rambukkana - Galagedara Section</title>
 
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 
 <style>
   :root{
@@ -13,54 +16,67 @@
     --paper:#f6f4ee;
     --line:#d8d2c2;
     --accent:#2f6f5e;
+    --accent-dark:#234f42;
     --accent-2:#b3541e;
     --panel:#ffffff;
     --muted:#6b6459;
+    --shadow-sm: 0 1px 2px rgba(28,43,42,0.06), 0 1px 1px rgba(28,43,42,0.04);
+    --shadow-md: 0 4px 12px rgba(28,43,42,0.10), 0 1px 3px rgba(28,43,42,0.08);
+    --radius: 10px;
   }
   *{box-sizing:border-box;}
   html,body{height:100%;margin:0;}
   body{
-    font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;
+    font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
     background:var(--paper);
     color:var(--ink);
     display:flex;
     flex-direction:column;
   }
   header{
-    background:var(--ink);
+    background:linear-gradient(135deg, #1c2b2a 0%, #223835 100%);
     color:var(--paper);
-    padding:14px 20px;
+    padding:15px 22px;
     display:flex;
     align-items:baseline;
     gap:14px;
     flex-wrap:wrap;
-    border-bottom:3px solid var(--accent-2);
+    border-bottom:2px solid var(--accent-2);
+    box-shadow:var(--shadow-md);
+    position:relative;
+    z-index:2;
   }
   #sidebar-toggle{
-    background:transparent;
-    border:1px solid #4a5a58;
+    background:rgba(255,255,255,0.06);
+    border:1px solid rgba(255,255,255,0.16);
     color:var(--paper);
-    border-radius:6px;
-    width:32px;
-    height:32px;
+    border-radius:8px;
+    width:34px;
+    height:34px;
     font-size:16px;
     line-height:1;
     cursor:pointer;
     flex-shrink:0;
     align-self:center;
+    transition:background 0.15s ease, transform 0.1s ease;
   }
   #sidebar-toggle:hover{
-    background:rgba(255,255,255,0.08);
+    background:rgba(255,255,255,0.14);
+  }
+  #sidebar-toggle:active{
+    transform:scale(0.95);
   }
   header h1{
-    font-size:17px;
+    font-size:18px;
     margin:0;
-    letter-spacing:0.02em;
-    font-weight:600;
+    letter-spacing:0.01em;
+    font-weight:700;
   }
   header .sub{
-    font-size:12px;
-    color:#c9c2b2;
+    font-size:11.5px;
+    color:#b9c9c0;
+    font-weight:600;
+    letter-spacing:0.04em;
   }
   #status-line{
     margin-left:auto;
@@ -78,49 +94,62 @@
   #status-dot.err{background:#c0523f;}
 
   #dashboard{
-    background:#25342f;
+    background:#1f2e2a;
     color:var(--paper);
     display:flex;
     flex-wrap:wrap;
-    gap:0;
-    padding:8px 20px;
-    border-bottom:1px solid #3a4b45;
+    gap:10px;
+    padding:12px 22px;
+    border-bottom:1px solid #33443e;
+    position:relative;
+    z-index:1;
   }
   .dash-stat{
     display:flex;
     flex-direction:column;
-    padding:0 18px;
-    border-right:1px solid #3a4b45;
-    min-width:90px;
+    padding:8px 16px 8px 14px;
+    min-width:100px;
+    background:rgba(255,255,255,0.04);
+    border-left:3px solid #4a5f58;
+    border-radius:6px;
+    transition:background 0.15s ease;
   }
-  .dash-stat:last-child{
-    border-right:none;
+  .dash-stat:hover{
+    background:rgba(255,255,255,0.07);
   }
+  .dash-stat.dash-total{ border-left-color:#7a8a84; }
+  .dash-stat.dash-completed-stat{ border-left-color:#4caf7d; }
+  .dash-stat.dash-inprogress-stat{ border-left-color:#e0a840; }
+  .dash-stat.dash-remaining-stat{ border-left-color:#8a8370; }
+  .dash-stat.dash-progress{ border-left-color:#7fd9a8; }
   .dash-label{
-    font-size:9.5px;
+    font-size:11px;
     text-transform:uppercase;
-    letter-spacing:0.06em;
+    letter-spacing:0.07em;
     color:#a9b8b1;
+    font-weight:600;
   }
   .dash-value{
-    font-size:14px;
-    font-weight:700;
+    font-size:20px;
+    font-weight:800;
     color:#fff;
+    letter-spacing:-0.01em;
+    margin-top:1px;
   }
   .dash-progress .dash-value{
     color:#7fd9a8;
   }
   @media (max-width: 768px){
     #dashboard{
-      padding:6px 10px;
-      gap:0;
+      padding:8px 12px;
+      gap:6px;
     }
     .dash-stat{
-      padding:0 10px;
-      min-width:70px;
+      padding:6px 10px 6px 10px;
+      min-width:76px;
     }
-    .dash-label{ font-size:8.5px; }
-    .dash-value{ font-size:12px; }
+    .dash-label{ font-size:9.5px; }
+    .dash-value{ font-size:16px; }
   }
 
   #app{
@@ -134,6 +163,7 @@
     min-width:300px;
     background:var(--panel);
     border-right:1px solid var(--line);
+    box-shadow:2px 0 8px rgba(28,43,42,0.05);
     display:flex;
     flex-direction:column;
     overflow-y:auto;
@@ -181,51 +211,68 @@
     }
   }
   #sidebar .block{
-    padding:14px 16px;
+    padding:16px 18px;
     border-bottom:1px solid var(--line);
   }
   #sidebar h2{
     font-size:11px;
     text-transform:uppercase;
-    letter-spacing:0.08em;
+    letter-spacing:0.09em;
     color:var(--muted);
-    margin:0 0 10px 0;
+    font-weight:700;
+    margin:0 0 11px 0;
   }
   #search{
     width:100%;
-    padding:8px 10px;
+    padding:9px 11px;
     border:1px solid var(--line);
-    border-radius:6px;
+    border-radius:8px;
     font-size:13px;
     background:var(--paper);
+    font-family:'Inter',sans-serif;
+    transition:border-color 0.15s ease, box-shadow 0.15s ease;
   }
-  .filter-group{margin-bottom:10px;}
+  #search:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(47,111,94,0.15);
+  }
+  .filter-group{margin-bottom:11px;}
   .filter-group label{
     display:block;
-    font-size:12.5px;
+    font-size:12px;
     color:var(--ink);
+    font-weight:600;
     margin-bottom:4px;
   }
   select{
     width:100%;
-    padding:7px 8px;
+    padding:8px 9px;
     border:1px solid var(--line);
-    border-radius:6px;
+    border-radius:8px;
     font-size:13px;
     background:var(--paper);
     color:var(--ink);
+    font-family:'Inter',sans-serif;
+    transition:border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  select:focus{
+    outline:none;
+    border-color:var(--accent);
+    box-shadow:0 0 0 3px rgba(47,111,94,0.15);
   }
   .legend-item{
     display:flex;
     align-items:center;
     gap:8px;
     font-size:12.5px;
-    margin-bottom:6px;
+    margin-bottom:7px;
   }
   .legend-item .legend-count{
     margin-left:auto;
     color:var(--muted);
     font-variant-numeric:tabular-nums;
+    font-weight:600;
   }
   .swatch{
     width:11px;height:11px;border-radius:50%;
@@ -261,20 +308,27 @@
   .kml-btn{
     display:block;
     width:100%;
-    padding:8px 10px;
+    padding:9px 12px;
     margin-bottom:8px;
     background:var(--panel);
-    border:1px solid var(--accent);
+    border:1.5px solid var(--accent);
     color:var(--accent);
-    border-radius:6px;
+    border-radius:8px;
     font-size:12px;
-    font-weight:600;
+    font-weight:700;
     cursor:pointer;
     text-align:left;
+    font-family:'Inter',sans-serif;
+    transition:background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease, transform 0.1s ease;
+    box-shadow:var(--shadow-sm);
   }
   .kml-btn:hover{
     background:var(--accent);
     color:#fff;
+    box-shadow:var(--shadow-md);
+  }
+  .kml-btn:active{
+    transform:scale(0.98);
   }
   .leaflet-popup-content-wrapper{
     border-radius:8px;
@@ -311,17 +365,20 @@
   .pdf-link-btn{
     display:block;
     margin-top:10px;
-    padding:6px 10px;
+    padding:8px 12px;
     background:var(--accent);
     color:#fff !important;
     text-decoration:none;
-    border-radius:6px;
-    font-size:12px;
-    font-weight:600;
+    border-radius:8px;
+    font-size:12.5px;
+    font-weight:700;
     text-align:center;
+    box-shadow:var(--shadow-sm);
+    transition:background 0.15s ease, box-shadow 0.15s ease;
   }
   .pdf-link-btn:hover{
-    background:#255a4c;
+    background:var(--accent-dark);
+    box-shadow:var(--shadow-md);
   }
   .bh-log-wrap{
     margin-top:10px;
@@ -350,7 +407,7 @@
     border-radius:8px !important;
     border:1px solid var(--line) !important;
     box-shadow:0 2px 6px rgba(0,0,0,0.15) !important;
-    font-family:'Segoe UI',ui-sans-serif,system-ui,sans-serif;
+    font-family:'Inter',ui-sans-serif,system-ui,sans-serif;
   }
   .leaflet-control-layers-expanded{
     padding:10px 12px !important;
@@ -403,10 +460,10 @@
 
 <div id="dashboard">
   <div class="dash-stat"><span class="dash-label">Last Updated</span><span id="dash-updated" class="dash-value">&mdash;</span></div>
-  <div class="dash-stat"><span class="dash-label">Total BHs</span><span id="dash-total" class="dash-value">&mdash;</span></div>
-  <div class="dash-stat"><span class="dash-label">Completed</span><span id="dash-completed" class="dash-value">&mdash;</span></div>
-  <div class="dash-stat"><span class="dash-label">In Progress</span><span id="dash-inprogress" class="dash-value">&mdash;</span></div>
-  <div class="dash-stat"><span class="dash-label">Remaining</span><span id="dash-remaining" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat dash-total"><span class="dash-label">Total BHs</span><span id="dash-total" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat dash-completed-stat"><span class="dash-label">Completed</span><span id="dash-completed" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat dash-inprogress-stat"><span class="dash-label">In Progress</span><span id="dash-inprogress" class="dash-value">&mdash;</span></div>
+  <div class="dash-stat dash-remaining-stat"><span class="dash-label">Remaining</span><span id="dash-remaining" class="dash-value">&mdash;</span></div>
   <div class="dash-stat dash-progress"><span class="dash-label">Progress</span><span id="dash-progress" class="dash-value">&mdash;</span></div>
 </div>
 
@@ -442,6 +499,11 @@
       <div id="legend"></div>
     </div>
     <div class="block">
+      <h2>Download Map Data</h2>
+      <button id="kml-bh-only" class="kml-btn">&#8681; KML &mdash; BH locations only</button>
+      <button id="kml-bh-road" class="kml-btn">&#8681; KML &mdash; BH locations + Road trace</button>
+    </div>
+    <div class="block">
       <h2>Overlay Layers</h2>
       <input id="overlay-file" type="file" accept=".kml,.geojson,.json,.zip" multiple />
       <div id="config-note" style="margin-top:8px;">
@@ -452,11 +514,6 @@
         Lines with a CAD-style <code>Color</code> attribute (AutoCAD Color Index)
         are drawn using that color automatically, at a fixed 0.5mm weight.
       </div>
-    </div>
-    <div class="block">
-      <h2>Download Map Data</h2>
-      <button id="kml-bh-only" class="kml-btn">&#8681; KML &mdash; BH locations only</button>
-      <button id="kml-bh-road" class="kml-btn">&#8681; KML &mdash; BH locations + Road trace</button>
     </div>
     <div class="block">
       <h2>&copy; National Building Research Institute</h2>
