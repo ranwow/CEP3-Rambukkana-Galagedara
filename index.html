@@ -508,18 +508,15 @@
       <input id="overlay-file" type="file" accept=".kml,.geojson,.json,.zip" multiple />
       <div id="config-note" style="margin-top:8px;">
         Add KML, GeoJSON, or a zipped Shapefile (.zip containing .shp/.dbf/.shx/.prj)
-        &mdash; e.g. tower line alignment or land boundaries. Toggle each on/off
-        from the layer switcher on the map. DWG/DXF isn't supported by browsers;
-        convert to one of the above first (e.g. via QGIS or AutoCAD export).
-        Lines with a CAD-style <code>Color</code> attribute (AutoCAD Color Index)
-        are drawn using that color automatically, at a fixed 0.5mm weight.
+        &mdash; e.g., road line alignment or land boundaries. Toggle each on/off
+        from the layer switcher on the map.
       </div>
     </div>
     <div class="block">
       <h2>&copy; National Building Research Institute</h2>
       <div id="config-note">
         For internal / project use only &mdash; Geotechnical Engineering Division.<br>
-        Map developed by Ranjan, Geologist, NBRI.<br>
+        Map developed by Ranjan, NBRI.<br>
         Connected to the live NBRI Google Sheet; re-fetches automatically every 5 minutes.
       </div>
     </div>
@@ -758,7 +755,7 @@ function computeBHLevels(row){
 }
 
 function rockLevelDisplay(levels){
-  if (levels.rockLevel !== null) return levels.rockLevel.toFixed(2) + ' m (RL)';
+  if (levels.rockLevel !== null) return levels.rockLevel.toFixed(2) + ' m (MSL)';
   if (levels.overburden !== null) return 'Depth ' + levels.overburden.toFixed(2) + ' m';
   return '';
 }
@@ -824,9 +821,9 @@ function buildBoreholeLogHtml(row){
   const svg = buildBoreholeLogSvg(levels);
   const overburdenTxt = levels.overburden !== null ? levels.overburden.toFixed(2) + 'm soil' : '';
   const rockTxt = levels.rockCoring !== null ? levels.rockCoring.toFixed(2) + 'm rock' : '';
-  const rlTxt = levels.rockLevel !== null ? ('RL(rock) ' + levels.rockLevel.toFixed(2) + 'm') : '';
-  const termRlTxt = levels.terminationLevel !== null ? ('RL(term) ' + levels.terminationLevel.toFixed(2) + 'm') : '';
-  const gwlRlTxt = levels.gwLevel !== null ? ('RL(GWL) ' + levels.gwLevel.toFixed(2) + 'm') : '';
+  const rlTxt = levels.rockLevel !== null ? ('MSL(rock) ' + levels.rockLevel.toFixed(2) + 'm') : '';
+  const termRlTxt = levels.terminationLevel !== null ? ('MSL(term) ' + levels.terminationLevel.toFixed(2) + 'm') : '';
+  const gwlRlTxt = levels.gwLevel !== null ? ('MSL(GWL) ' + levels.gwLevel.toFixed(2) + 'm') : '';
 
   const captionParts = [overburdenTxt, rockTxt, rlTxt, termRlTxt, gwlRlTxt].filter(Boolean).join(' &middot; ');
 
