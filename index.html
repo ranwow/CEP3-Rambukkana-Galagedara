@@ -92,6 +92,31 @@
   }
   #status-dot.ok{background:#5fae7d;}
   #status-dot.err{background:#c0523f;}
+  #refresh-btn{
+    background:rgba(255,255,255,0.08);
+    border:1px solid rgba(255,255,255,0.2);
+    color:var(--paper);
+    border-radius:6px;
+    width:24px;
+    height:24px;
+    font-size:14px;
+    line-height:1;
+    cursor:pointer;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    transition:background 0.15s ease, transform 0.4s ease;
+  }
+  #refresh-btn:hover{
+    background:rgba(255,255,255,0.18);
+  }
+  #refresh-btn.spinning{
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{
+    from{ transform:rotate(0deg); }
+    to{ transform:rotate(360deg); }
+  }
 
   #dashboard{
     background:#1f2e2a;
@@ -424,6 +449,20 @@
   .leaflet-control-layers-base span{
     color:var(--ink);
   }
+  .locate-control a{
+    width:30px !important;
+    height:30px !important;
+    line-height:30px !important;
+    text-align:center;
+    font-size:18px;
+    color:var(--accent);
+    background:#fff;
+    text-decoration:none;
+  }
+  .locate-control a.locate-active{
+    color:#fff;
+    background:var(--accent);
+  }
   /* Base rules for our smart engineering labels */
   .bh-label, .pkg-label {
     background: rgba(255, 255, 255, 0.92) !important;
@@ -461,7 +500,10 @@
   <button id="sidebar-toggle" aria-label="Toggle panel">&#9776;</button>
   <h1>NBRI &mdash; Borehole Location Map</h1>
   <div class="sub">CEP3 - GEOTECHNICAL INVESTIGATION WORK &nbsp;|&nbsp; RAMBUKKANA - GALAGEDARA SECTION</div>
-  <div id="status-line"><span id="status-dot"></span><span id="status-text">Loading data&hellip;</span></div>
+  <div id="status-line">
+    <button id="refresh-btn" title="Refresh data now">&#8635;</button>
+    <span id="status-dot"></span><span id="status-text">Loading data&hellip;</span>
+  </div>
 </header>
 
 <div id="dashboard">
@@ -512,6 +554,7 @@
       <h2>Download Map Data</h2>
       <button id="kml-bh-only" class="kml-btn">&#8681; KML &mdash; BH locations only</button>
       <button id="kml-bh-road" class="kml-btn">&#8681; KML &mdash; BH locations + Road trace</button>
+      <button id="pdf-map-btn" class="kml-btn">&#8681; PDF Map (current view)</button>
     </div>
     <div class="block">
       <h2>Overlay Layers</h2>
@@ -540,6 +583,8 @@
 <script src="https://unpkg.com/togeojson@0.16.0/togeojson.js"></script>
 <script src="https://unpkg.com/shpjs@4.0.4/dist/shp.js"></script>
 <script src="https://unpkg.com/tokml@0.4.0/tokml.js"></script>
+<script src="https://unpkg.com/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://unpkg.com/leaflet-image@0.0.4/leaflet-image.js"></script>
 
 <script>
 /* ============================================================
@@ -616,6 +661,77 @@ const layersControl = L.control.layers(baseLayers, {}, {
   position: 'topright',
   collapsed: window.matchMedia('(max-width: 768px)').matches
 }).addTo(map);
+
+/* ============================================================
+   Locate Me — high-accuracy device GPS position
+   ============================================================ */
+let userLocationMarker = null;
+let userAccuracyCircle = null;
+let userLocationWatchId = null;
+
+const LocateControl = L.Control.extend({
+  options: { position: 'topright' },
+  onAdd: function(){
+    const container = L.DomUtil.create('div', 'leaflet-bar leaflet-control locate-control');
+    const btn = L.DomUtil.create('a', '', container);
+    btn.href = '#';
+    btn.title = 'Show my location';
+    btn.innerHTML = '&#9678;';
+    L.DomEvent.on(btn, 'click', L.DomEvent.stop).on(btn, 'click', () => {
+      toggleLocate(btn);
+    });
+    return container;
+  }
+});
+map.addControl(new LocateControl());
+
+function toggleLocate(btn){
+  if (userLocationWatchId !== null){
+    navigator.geolocation.clearWatch(userLocationWatchId);
+    userLocationWatchId = null;
+    if (userLocationMarker) { map.removeLayer(userLocationMarker); userLocationMarker = null; }
+    if (userAccuracyCircle) { map.removeLayer(userAccuracyCircle); userAccuracyCircle = null; }
+    if (btn) btn.classList.remove('locate-active');
+    return;
+  }
+  if (!navigator.geolocation){
+    alert('Your browser does not support geolocation.');
+    return;
+  }
+  if (btn) btn.classList.add('locate-active');
+  let firstFix = true;
+  userLocationWatchId = navigator.geolocation.watchPosition(
+    (pos) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      const latlng = [latitude, longitude];
+      if (!userLocationMarker){
+        userLocationMarker = L.circleMarker(latlng, {
+          radius: 7, color: '#fff', weight: 2, fillColor: '#1e6fd9', fillOpacity: 1
+        }).addTo(map).bindPopup('Your location (&plusmn;' + Math.round(accuracy) + 'm accuracy)');
+      } else {
+        userLocationMarker.setLatLng(latlng);
+      }
+      if (!userAccuracyCircle){
+        userAccuracyCircle = L.circle(latlng, {
+          radius: accuracy, color: '#1e6fd9', weight: 1, fillColor: '#1e6fd9', fillOpacity: 0.12
+        }).addTo(map);
+      } else {
+        userAccuracyCircle.setLatLng(latlng);
+        userAccuracyCircle.setRadius(accuracy);
+      }
+      if (firstFix){
+        map.setView(latlng, Math.max(map.getZoom(), 17));
+        firstFix = false;
+      }
+    },
+    (err) => {
+      alert('Could not get your location: ' + err.message + '\n\nMake sure location access is allowed for this site, and that GPS/location services are enabled on your device.');
+      if (btn) btn.classList.remove('locate-active');
+      userLocationWatchId = null;
+    },
+    { enableHighAccuracy: true, maximumAge: 5000, timeout: 15000 }
+  );
+}
 
 const markersLayer = L.layerGroup();
 map.addLayer(markersLayer);
@@ -1126,6 +1242,14 @@ if (SHEET_CSV_URL && AUTO_REFRESH_MS > 0){
   setInterval(fetchLogDates, AUTO_REFRESH_MS);
 }
 
+document.getElementById('refresh-btn').addEventListener('click', () => {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+  fetchData();
+  fetchLogDates();
+  setTimeout(() => btn.classList.remove('spinning'), 900);
+});
+
 /* ============================================================
    AutoCAD Color Index (ACI) → hex, for CAD-derived shapefiles.
    Source values match AutoCAD's default indexed palette.
@@ -1361,16 +1485,31 @@ function boreholesToGeoJSON(){
     if (e === null || n === null) return;
     const ll = convertToLatLon(e, n);
     if (!ll) return;
+
+    const levels = computeBHLevels(row);
+    const bhName = (row['BH Name'] || '').trim();
+    const logDates = bhDatesLookup[bhName] || {};
+    const commenceDate = formatDateDMY(getFirst(row, ['Borehole Commence Date','Commence Date','Date Commenced','Commencement Date','Start Date','Started Date']) || logDates.commence || '');
+    const completedDate = formatDateDMY(getFirst(row, ['Borehole Completed Date','Completed Date','Completion Date','Date Completed','Finish Date','End Date']) || logDates.completed || '');
+    const pdfUrl = (row['PDF Link'] || row['Log PDF'] || row['Borehole Log'] || '').trim();
+
     features.push({
       type: 'Feature',
       properties: {
-        name: row['BH Name'] || 'Unnamed BH',
+        name: bhName || 'Unnamed BH',
         Status: row['Status'] || '',
+        'Commence Date': commenceDate,
+        'Completed Date': completedDate,
+        Easting: row['Easting'] || '',
+        Northing: row['Northing'] || '',
+        'Elevation (m)': row['Elevation'] || '',
         Contractor: row['Contractor Done'] || row['Contractor'] || '',
         Lot: row['Lot'] || '',
         Package: row['Package'] || '',
-        Elevation: row['Elevation'] || '',
-        TerminationDepth: row['Termination Depth'] || ''
+        'Termination Depth (m)': row['Termination Depth'] || '',
+        'Rock Level (m)': rockLevelDisplay(levels),
+        'Groundwater Level (m)': row['Groundwater Level'] || '',
+        'PDF Link': pdfUrl
       },
       geometry: { type: 'Point', coordinates: [ll.lon, ll.lat] }
     });
@@ -1409,6 +1548,220 @@ function exportKML(includeRoad){
 
 document.getElementById('kml-bh-only').addEventListener('click', () => exportKML(false));
 document.getElementById('kml-bh-road').addEventListener('click', () => exportKML(true));
+
+/* ============================================================
+   PDF Map export — current view only, with legend, north arrow,
+   and graphical scale. Tries a real basemap snapshot first; if the
+   active basemap blocks cross-origin capture (common with free
+   tile providers), falls back to an accurate vector-only map so
+   the export always succeeds.
+   ============================================================ */
+function getVisibleFilteredRows(){
+  const searchTerm = document.getElementById('search').value.trim().toLowerCase();
+  const fStatus = document.getElementById('f-status').value;
+  const fContractor = document.getElementById('f-contractor').value;
+  const fLot = document.getElementById('f-lot').value;
+  const fPackage = document.getElementById('f-package').value;
+  const bounds = map.getBounds();
+  const out = [];
+
+  allRows.forEach(row => {
+    const status = row['Status'] || '';
+    const contractor = row['Contractor Done'] || row['Contractor'] || '';
+    const lot = row['Lot'] || '';
+    const pkg = row['Package'] || '';
+    const name = row['BH Name'] || '';
+
+    if (fStatus && status !== fStatus) return;
+    if (fContractor && contractor !== fContractor) return;
+    if (fLot && lot !== fLot) return;
+    if (fPackage && pkg !== fPackage) return;
+    if (searchTerm){
+      const hay = `${name} ${lot} ${pkg} ${contractor}`.toLowerCase();
+      if (!hay.includes(searchTerm)) return;
+    }
+
+    const e = toNum(row['Easting']);
+    const n = toNum(row['Northing']);
+    if (e === null || n === null) return;
+    const ll = convertToLatLon(e, n);
+    if (!ll) return;
+    if (!bounds.contains([ll.lat, ll.lon])) return;
+
+    out.push({ row, lat: ll.lat, lon: ll.lon, status });
+  });
+  return out;
+}
+
+function niceScaleMeters(target){
+  const steps = [1,2,5,10,20,50,100,200,500,1000,2000,5000,10000,20000,50000];
+  let best = steps[0];
+  for (const s of steps){ if (s <= target) best = s; }
+  return best;
+}
+
+function drawNorthArrow(doc, x, y, size){
+  doc.setDrawColor(28,43,42);
+  doc.setFillColor(28,43,42);
+  doc.triangle(x, y - size, x - size*0.35, y + size*0.5, x + size*0.35, y + size*0.5, 'F');
+  doc.setFontSize(9);
+  doc.setTextColor(28,43,42);
+  doc.text('N', x, y + size*0.5 + 4, { align: 'center' });
+}
+
+function drawScaleBar(doc, x, y, metersPerMm){
+  const targetMm = 35;
+  const targetMeters = targetMm * metersPerMm;
+  const niceMeters = niceScaleMeters(targetMeters);
+  const barMm = niceMeters / metersPerMm;
+  const label = niceMeters >= 1000 ? (niceMeters/1000) + ' km' : niceMeters + ' m';
+
+  doc.setDrawColor(28,43,42);
+  doc.setLineWidth(0.5);
+  doc.line(x, y, x + barMm, y);
+  doc.line(x, y - 1.5, x, y + 1.5);
+  doc.line(x + barMm, y - 1.5, x + barMm, y + 1.5);
+  doc.setFontSize(8);
+  doc.setTextColor(28,43,42);
+  doc.text(label, x + barMm/2, y - 2, { align: 'center' });
+  doc.text('0', x, y + 5, { align: 'center' });
+}
+
+function buildAndSavePDF(rasterDataUrl, rasterW, rasterH){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  const pageW = 297, pageH = 210, margin = 10;
+  const legendW = 52;
+  const mapX = margin, mapY = margin + 14;
+  const mapW = pageW - margin*2 - legendW - 6;
+  const mapH = pageH - margin*2 - 14 - 12;
+
+  // Title
+  doc.setFontSize(13);
+  doc.setTextColor(28,43,42);
+  doc.setFont(undefined, 'bold');
+  doc.text('CEP3 - Geotechnical Investigation Work | Rambukkana - Galagedara Section', margin, margin + 4);
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(9.5);
+  doc.setTextColor(90,90,90);
+  doc.text('Borehole Location Map — Current View  |  Generated ' + formatDateDMY(new Date()) + ', ' + new Date().toLocaleTimeString(), margin, margin + 9);
+
+  // Map area background + border
+  doc.setFillColor(246,244,238);
+  doc.rect(mapX, mapY, mapW, mapH, 'F');
+
+  const bounds = map.getBounds();
+  const west = bounds.getWest(), east = bounds.getEast(), north = bounds.getNorth(), south = bounds.getSouth();
+
+  if (rasterDataUrl){
+    try {
+      doc.addImage(rasterDataUrl, 'PNG', mapX, mapY, mapW, mapH);
+    } catch(e){
+      rasterDataUrl = null;
+    }
+  }
+
+  const visible = getVisibleFilteredRows();
+
+  if (!rasterDataUrl){
+    // Vector fallback: plot BH points accurately within the map area
+    visible.forEach(v => {
+      const px = mapX + ((v.lon - west) / (east - west)) * mapW;
+      const py = mapY + ((north - v.lat) / (north - south)) * mapH;
+      const hex = colorFor(v.status);
+      const rgb = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+      doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+      doc.setDrawColor(255,255,255);
+      doc.circle(px, py, 1.3, 'FD');
+    });
+    doc.setFontSize(8);
+    doc.setTextColor(150,90,60);
+    doc.text('Basemap imagery could not be captured for export (cross-origin restriction) — showing borehole positions only.', mapX, mapY + mapH + 4.5);
+  }
+
+  doc.setDrawColor(28,43,42);
+  doc.setLineWidth(0.3);
+  doc.rect(mapX, mapY, mapW, mapH);
+
+  // North arrow
+  drawNorthArrow(doc, mapX + mapW - 10, mapY + 14, 5);
+
+  // Scale bar
+  const centerLat = (north + south) / 2;
+  const widthMeters = map.distance(L.latLng(centerLat, west), L.latLng(centerLat, east));
+  const metersPerMm = widthMeters / mapW;
+  drawScaleBar(doc, mapX + 6, mapY + mapH - 6, metersPerMm);
+
+  // Legend panel
+  const legX = mapX + mapW + 8;
+  let legY = mapY + 2;
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'bold');
+  doc.setTextColor(28,43,42);
+  doc.text('Legend — Status', legX, legY);
+  legY += 6;
+  doc.setFont(undefined, 'normal');
+  doc.setFontSize(8.5);
+
+  const counts = {};
+  visible.forEach(v => {
+    const s = v.status || 'Unknown';
+    counts[s] = (counts[s] || 0) + 1;
+  });
+  const statuses = Object.keys(counts).sort();
+  statuses.forEach(s => {
+    const hex = colorFor(s);
+    const rgb = [parseInt(hex.slice(1,3),16), parseInt(hex.slice(3,5),16), parseInt(hex.slice(5,7),16)];
+    doc.setFillColor(rgb[0], rgb[1], rgb[2]);
+    doc.circle(legX + 2, legY - 1.3, 1.6, 'F');
+    doc.setTextColor(28,43,42);
+    doc.text(s + ' (' + counts[s] + ')', legX + 6, legY);
+    legY += 5.5;
+  });
+  legY += 2;
+  doc.setDrawColor(216,210,194);
+  doc.line(legX, legY - 4, legX + legendW - 8, legY - 4);
+  doc.setFont(undefined, 'bold');
+  doc.text('Total visible: ' + visible.length, legX, legY);
+  doc.setFont(undefined, 'normal');
+
+  // Footer
+  doc.setFontSize(7.5);
+  doc.setTextColor(120,120,120);
+  doc.text('© National Building Research Institute — For internal / project use only — Geotechnical Engineering Division', margin, pageH - 5);
+
+  doc.save('CEP3_Map_' + new Date().toISOString().slice(0,10) + '.pdf');
+}
+
+function exportMapPDF(){
+  const btn = document.getElementById('pdf-map-btn');
+  const originalText = btn.textContent;
+  btn.textContent = 'Generating PDF…';
+  btn.disabled = true;
+
+  try {
+    leafletImage(map, (err, canvas) => {
+      let dataUrl = null;
+      if (!err && canvas){
+        try {
+          dataUrl = canvas.toDataURL('image/png');
+        } catch(e){
+          dataUrl = null; // tainted canvas — cross-origin tiles blocked capture
+        }
+      }
+      buildAndSavePDF(dataUrl, canvas ? canvas.width : null, canvas ? canvas.height : null);
+      btn.textContent = originalText;
+      btn.disabled = false;
+    });
+  } catch(e){
+    // leafletImage itself failed — still deliver a working vector-only PDF
+    buildAndSavePDF(null, null, null);
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
+}
+
+document.getElementById('pdf-map-btn').addEventListener('click', exportMapPDF);
 </script>
 </body>
 </html>
